@@ -24,6 +24,7 @@ kotlin {
                 api(libs.kotlinx.io)
                 api(libs.ktor.network)
                 implementation(libs.kotlin.stdlib)
+                implementation(libs.kotlin.logging)
             }
         }
 
