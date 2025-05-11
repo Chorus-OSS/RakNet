@@ -1,36 +1,38 @@
 package org.chorus_oss.raknet.protocol.types
 
-import kotlinx.io.Sink
-import kotlinx.io.Source
-import kotlinx.io.readByteArray
+import kotlinx.io.*
 import org.chorus_oss.raknet.protocol.Codec
 
-object Magic : Codec<ByteArray> {
+object Magic : Codec<List<UByte>> {
     val MagicBytes
-        get() = listOf(
-            0x00,
-            0xFF.toByte(),
-            0xFF.toByte(),
-            0x00,
-            0xFE.toByte(),
-            0xFE.toByte(),
-            0xFE.toByte(),
-            0xFE.toByte(),
-            0xFD.toByte(),
-            0xFD.toByte(),
-            0xFD.toByte(),
-            0xFD.toByte(),
-            0x12,
-            0x34,
-            0x56,
-            0x78
-        ).toByteArray()
+        get() = listOf<UByte>(
+            0x00u,
+            0xFFu,
+            0xFFu,
+            0x00u,
+            0xFEu,
+            0xFEu,
+            0xFEu,
+            0xFEu,
+            0xFDu,
+            0xFDu,
+            0xFDu,
+            0xFDu,
+            0x12u,
+            0x34u,
+            0x56u,
+            0x78u
+        )
 
-    override fun serialize(value: ByteArray, stream: Sink) {
-        stream.write(MagicBytes)
+    override fun serialize(value: List<UByte>, stream: Sink) {
+        for (byte in MagicBytes) {
+            stream.writeUByte(byte)
+        }
     }
 
-    override fun deserialize(stream: Source): ByteArray {
-        return stream.readByteArray(MagicBytes.size)
+    override fun deserialize(stream: Source): List<UByte> {
+        return List(MagicBytes.size) {
+            stream.readUByte()
+        }
     }
 }

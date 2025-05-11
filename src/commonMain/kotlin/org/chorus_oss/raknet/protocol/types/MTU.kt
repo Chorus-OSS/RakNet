@@ -5,12 +5,12 @@ import kotlinx.io.Sink
 import kotlinx.io.Source
 import org.chorus_oss.raknet.protocol.Codec
 
-object MTU : Codec<Int> {
-    override fun serialize(value: Int, stream: Sink) {
-        stream.write(ByteArray(value - stream.size))
+object MTU : Codec<UShort> {
+    override fun serialize(value: UShort, stream: Sink) {
+        stream.write(ByteArray(value.toInt() - stream.size))
     }
 
-    override fun deserialize(stream: Source): Int {
-        return stream.remaining.toInt()
+    override fun deserialize(stream: Source): UShort {
+        return stream.remaining.toUShort()
     }
 }
