@@ -2,10 +2,11 @@ package org.chorus_oss.raknet.protocol.packets
 
 import kotlinx.io.Sink
 import kotlinx.io.Source
+import org.chorus_oss.raknet.protocol.Packet
 import org.chorus_oss.raknet.protocol.PacketCodec
 import org.chorus_oss.raknet.types.PacketHeader
 
-class Disconnect {
+class Disconnect : Packet(id) {
     companion object : PacketCodec<Disconnect> {
         override val id: UByte
             get() = PacketHeader.DISCONNECT

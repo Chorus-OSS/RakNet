@@ -1,6 +1,7 @@
 package org.chorus_oss.raknet.protocol.packets
 
 import kotlinx.io.*
+import org.chorus_oss.raknet.protocol.Packet
 import org.chorus_oss.raknet.protocol.PacketCodec
 import org.chorus_oss.raknet.protocol.types.UMedium
 import org.chorus_oss.raknet.protocol.types.UMediumLE
@@ -8,7 +9,7 @@ import org.chorus_oss.raknet.types.PacketHeader
 
 data class NAck(
     val sequences: List<UMedium>
-) {
+) : Packet(id) {
     companion object : PacketCodec<NAck> {
         override val id: UByte
             get() = PacketHeader.NACK

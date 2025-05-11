@@ -4,13 +4,14 @@ import kotlinx.io.Sink
 import kotlinx.io.Source
 import kotlinx.io.readULong
 import kotlinx.io.writeULong
+import org.chorus_oss.raknet.protocol.Packet
 import org.chorus_oss.raknet.protocol.PacketCodec
 import org.chorus_oss.raknet.types.PacketHeader
 
 data class ConnectionRequest(
     val clientGuid: ULong,
     val clientTimestamp: ULong,
-) {
+) : Packet(id) {
     companion object : PacketCodec<ConnectionRequest> {
         override val id: UByte
             get() = PacketHeader.CONNECTION_REQUEST

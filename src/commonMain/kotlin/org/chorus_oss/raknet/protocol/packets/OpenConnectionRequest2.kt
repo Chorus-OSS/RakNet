@@ -1,6 +1,7 @@
 package org.chorus_oss.raknet.protocol.packets
 
 import kotlinx.io.*
+import org.chorus_oss.raknet.protocol.Packet
 import org.chorus_oss.raknet.protocol.PacketCodec
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.protocol.types.Magic
@@ -11,7 +12,7 @@ data class OpenConnectionRequest2(
     val address: Address,
     val mtu: UShort,
     val client: ULong
-) {
+) : Packet(id) {
     companion object : PacketCodec<OpenConnectionRequest2> {
         override val id: UByte
             get() = PacketHeader.OPEN_CONNECTION_REQUEST_2

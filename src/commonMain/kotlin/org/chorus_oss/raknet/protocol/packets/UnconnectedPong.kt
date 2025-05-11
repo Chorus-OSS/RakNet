@@ -4,6 +4,7 @@ import kotlinx.io.Sink
 import kotlinx.io.Source
 import kotlinx.io.readULong
 import kotlinx.io.writeULong
+import org.chorus_oss.raknet.protocol.Packet
 import org.chorus_oss.raknet.protocol.PacketCodec
 import org.chorus_oss.raknet.protocol.types.Magic
 import org.chorus_oss.raknet.protocol.types.String16
@@ -14,7 +15,7 @@ data class UnconnectedPong(
     val guid: ULong,
     val magic: List<UByte>,
     val message: String,
-) {
+) : Packet(id) {
     companion object : PacketCodec<UnconnectedPong> {
         override val id: UByte
             get() = PacketHeader.UNCONNECTED_PONG

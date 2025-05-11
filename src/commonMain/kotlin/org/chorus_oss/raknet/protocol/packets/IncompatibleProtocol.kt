@@ -1,6 +1,7 @@
 package org.chorus_oss.raknet.protocol.packets
 
 import kotlinx.io.*
+import org.chorus_oss.raknet.protocol.Packet
 import org.chorus_oss.raknet.protocol.PacketCodec
 import org.chorus_oss.raknet.protocol.types.Magic
 import org.chorus_oss.raknet.types.PacketHeader
@@ -9,7 +10,7 @@ data class IncompatibleProtocol(
     val protocol: UByte,
     val magic: List<UByte>,
     val guid: ULong,
-) {
+) : Packet(id) {
     companion object : PacketCodec<IncompatibleProtocol> {
         override val id: UByte
             get() = PacketHeader.INCOMPATIBLE_PROTOCOL_VERSION

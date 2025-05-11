@@ -1,6 +1,7 @@
 package org.chorus_oss.raknet.protocol.packets
 
 import kotlinx.io.*
+import org.chorus_oss.raknet.protocol.Packet
 import org.chorus_oss.raknet.protocol.PacketCodec
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.protocol.types.SystemAddress
@@ -12,7 +13,7 @@ data class ConnectionRequestAccepted(
     val systemAddress: List<Address>,
     val requestTimestamp: ULong,
     val timestamp: ULong,
-) {
+) : Packet(id) {
     companion object : PacketCodec<ConnectionRequestAccepted> {
         override val id: UByte
             get() = PacketHeader.CONNECTION_REQUEST_ACCEPTED

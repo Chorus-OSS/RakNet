@@ -1,6 +1,7 @@
 package org.chorus_oss.raknet.protocol.packets
 
 import kotlinx.io.*
+import org.chorus_oss.raknet.protocol.Packet
 import org.chorus_oss.raknet.protocol.PacketCodec
 import org.chorus_oss.raknet.protocol.types.Frame
 import org.chorus_oss.raknet.types.PacketHeader
@@ -8,7 +9,7 @@ import org.chorus_oss.raknet.types.PacketHeader
 data class FrameSet(
     val sequence: UInt,
     val frames: List<Frame>
-) {
+) : Packet(id) {
     companion object : PacketCodec<FrameSet> {
         override val id: UByte
             get() = PacketHeader.FRAME_SET
