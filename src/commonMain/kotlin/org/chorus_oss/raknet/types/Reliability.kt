@@ -8,5 +8,42 @@ enum class Reliability {
     ReliableSequenced,
     UnreliableWithAckReceipt,
     ReliableWithAckReceipt,
-    ReliableOrderedWithAckReceipt,
+    ReliableOrderedWithAckReceipt;
+
+    val isReliable: Boolean
+        get() = when (this) {
+            Reliable,
+            ReliableOrdered,
+            ReliableSequenced,
+            ReliableWithAckReceipt,
+            ReliableOrderedWithAckReceipt -> true
+
+            else -> false
+        }
+
+    val isSequenced: Boolean
+        get() = when (this) {
+            ReliableSequenced,
+            UnreliableSequenced -> true
+
+            else -> false
+        }
+
+    val isOrdered: Boolean
+        get() = when (this) {
+            UnreliableSequenced,
+            ReliableOrdered,
+            ReliableSequenced,
+            ReliableOrderedWithAckReceipt -> true
+
+            else -> false
+        }
+
+    val isOrderExclusive: Boolean
+        get() = when (this) {
+            ReliableOrdered,
+            ReliableOrderedWithAckReceipt -> true
+
+            else -> false
+        }
 }
