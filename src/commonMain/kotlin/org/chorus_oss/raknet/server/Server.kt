@@ -4,8 +4,12 @@ import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
+import kotlinx.io.Buffer
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.connection.Connection
+import org.chorus_oss.raknet.protocol.packets.UnconnectedPing
+import org.chorus_oss.raknet.protocol.packets.UnconnectedPong
+import org.chorus_oss.raknet.protocol.types.Magic
 import org.chorus_oss.raknet.types.HeaderFlags
 import org.chorus_oss.raknet.types.PacketHeader
 import kotlin.coroutines.CoroutineContext
@@ -18,7 +22,7 @@ class Server : CoroutineScope {
 
     private val bindings: MutableSet<BoundDatagramSocket> = mutableSetOf()
 
-    private val connections: MutableMap<SocketAddress, ConnectedDatagramSocket> = mutableMapOf()
+    private val connections: MutableMap<SocketAddress, Connection> = mutableMapOf()
 
     private val incoming: Channel<Connection> = Channel(32)
 
@@ -34,7 +38,7 @@ class Server : CoroutineScope {
         bindings.forEach {
             launch {
                 while (alive) {
-                    handle(it.receive())
+                    handle(it.receive(), it)
                 }
             }
         }
@@ -56,12 +60,12 @@ class Server : CoroutineScope {
         this.bindings.add(socket)
     }
 
-    private fun handle(datagram: Datagram) {
+    private suspend fun handle(datagram: Datagram, from: BoundDatagramSocket) {
         val header = datagram.packet.peek().readUByte()
 
         val offline = header and HeaderFlags.VALID == 0u.toUByte()
         if (offline) {
-            return handleOffline(datagram)
+            return handleOffline(datagram, from)
         }
 
         val connection = connections[datagram.address]
@@ -70,12 +74,38 @@ class Server : CoroutineScope {
         }
     }
 
-    private fun handleOffline(datagram: Datagram) {
-        val header = datagram.packet.peek().readUByte()
+    private suspend fun handleOffline(datagram: Datagram, from: BoundDatagramSocket) {
+        val header = datagram.packet.readUByte()
 
         when (header) {
             PacketHeader.UNCONNECTED_PING -> {
+                val ping = UnconnectedPing.deserialize(datagram.packet)
 
+                val pong = UnconnectedPong(
+                    timestamp = ping.timestamp,
+                    guid = 9128391283u,
+                    magic = Magic.MagicBytes,
+                    message = listOf(
+                        "MCPE",
+                        "Raknet Server",
+                        100,
+                        "1.0.0",
+                        0,
+                        10,
+                        9128391283u,
+                        "RakNet Server",
+                        "Survival",
+                        1,
+                        from.localAddress.port(),
+                        from.localAddress.port() + 1
+                    ).joinToString(separator = ";", postfix = ";")
+                )
+
+                val buffer = Buffer()
+                UnconnectedPong.serialize(pong, buffer)
+
+                val outDatagram = Datagram(packet = buffer, address = datagram.address)
+                from.send(outDatagram)
             }
 
             PacketHeader.OPEN_CONNECTION_REQUEST_1 -> {
