@@ -9,7 +9,6 @@ import org.chorus_oss.raknet.connection.Connection
 import org.chorus_oss.raknet.types.HeaderFlags
 import org.chorus_oss.raknet.types.PacketHeader
 import kotlin.coroutines.CoroutineContext
-import kotlin.experimental.and
 
 class Server : CoroutineScope {
     override val coroutineContext: CoroutineContext
