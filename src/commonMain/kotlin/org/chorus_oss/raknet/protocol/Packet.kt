@@ -2,6 +2,9 @@ package org.chorus_oss.raknet.protocol
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.io.Buffer
+import kotlinx.io.Source
+import kotlinx.io.readUByte
+import kotlinx.io.writeUByte
 import org.chorus_oss.raknet.protocol.packets.*
 
 open class Packet(val id: UByte) {
@@ -39,9 +42,23 @@ open class Packet(val id: UByte) {
                 return buffer
             }
 
+            buffer.writeUByte(value.id)
             codec.serialize(value, buffer)
 
             return buffer
+        }
+
+        fun deserialize(stream: Source): Packet {
+            val id = stream.readUByte()
+
+            @Suppress("UNCHECKED_CAST")
+            val codec = registry[id] as? PacketCodec<Packet>
+            if (codec == null) {
+                log.error { "Couldn't find PacketCodec for id: $id" }
+                return Packet(id)
+            }
+
+            return codec.deserialize(stream)
         }
     }
 }
