@@ -8,12 +8,17 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.io.Buffer
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.connection.Connection
-import org.chorus_oss.raknet.protocol.packets.UnconnectedPing
-import org.chorus_oss.raknet.protocol.packets.UnconnectedPong
+import org.chorus_oss.raknet.protocol.packets.*
+import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.protocol.types.Magic
+import org.chorus_oss.raknet.types.Constants
 import org.chorus_oss.raknet.types.HeaderFlags
+import org.chorus_oss.raknet.types.MOTD
 import org.chorus_oss.raknet.types.PacketHeader
 import kotlin.coroutines.CoroutineContext
+import kotlin.math.max
+import kotlin.random.Random
+import kotlin.random.nextULong
 
 class Server(private val socket: BoundDatagramSocket) : CoroutineScope {
     override val coroutineContext: CoroutineContext
@@ -24,6 +29,28 @@ class Server(private val socket: BoundDatagramSocket) : CoroutineScope {
     private val incoming: Channel<Connection> = Channel(32)
 
     private var alive: Boolean = false
+
+    private var guid = Random.nextULong()
+
+    var maxMtuSize: UShort = Constants.MAX_MTU_SIZE
+    var minMtuSize: UShort = Constants.MIN_MTU_SIZE
+    var maxConnections: Int = 10
+
+    var motd: MOTD = MOTD(
+        edition = "MCPE",
+        name = "Chorus/RakNet",
+        protocol = 0,
+        version = "1.0.0",
+        playerCount = this.connections.size,
+        playerMax = maxConnections,
+        guid = guid,
+        subName = "chorus-oss.org",
+        gamemode = "Survival",
+        nintendoLimited = false,
+        port = socket.localAddress.port()
+    )
+
+    var message: String? = null
 
     fun start() {
         if (alive) {
@@ -37,6 +64,18 @@ class Server(private val socket: BoundDatagramSocket) : CoroutineScope {
                 handle(socket.receive())
             }
         }
+    }
+
+    fun stop() {
+        alive = false
+
+        socket.close()
+
+        this.cancel()
+    }
+
+    suspend fun send(data: Datagram) {
+        socket.send(data)
     }
 
     private suspend fun handle(datagram: Datagram) {
@@ -54,45 +93,96 @@ class Server(private val socket: BoundDatagramSocket) : CoroutineScope {
     }
 
     private suspend fun handleOffline(datagram: Datagram) {
-        val header = datagram.packet.readUByte()
-
-        when (header) {
+        when (val header = datagram.packet.readUByte()) {
             PacketHeader.UNCONNECTED_PING -> {
                 val ping = UnconnectedPing.deserialize(datagram.packet)
 
                 val pong = UnconnectedPong(
                     timestamp = ping.timestamp,
-                    guid = 9128391283u,
+                    guid = guid,
                     magic = Magic.MagicBytes,
-                    message = listOf(
-                        "MCPE",
-                        "RakNet Server",
-                        100,
-                        "1.0.0",
-                        0,
-                        10,
-                        9128391283u,
-                        "RakNet Server",
-                        "Survival",
-                        1,
-                        socket.localAddress.port(),
-                        socket.localAddress.port() + 1
-                    ).joinToString(separator = ";", postfix = ";")
+                    message = message ?: motd.copy(
+                        playerCount = connections.size,
+                        playerMax = maxConnections,
+                        port = socket.localAddress.port(),
+                        guid = guid,
+                    ).toString()
                 )
 
-                val buffer = Buffer()
-                UnconnectedPong.serialize(pong, buffer)
+                val packet = Buffer()
+                UnconnectedPong.serialize(pong, packet)
 
-                val outDatagram = Datagram(packet = buffer, address = datagram.address)
-                socket.send(outDatagram)
+                return this.send(Datagram(packet, address = datagram.address))
             }
 
             PacketHeader.OPEN_CONNECTION_REQUEST_1 -> {
+                val request = OpenConnectionRequest1.deserialize(datagram.packet)
 
+                if (request.protocol != Constants.PROTOCOL) {
+                    val incompatible = IncompatibleProtocol(
+                        protocol = Constants.PROTOCOL,
+                        guid = this.guid,
+                        magic = Magic.MagicBytes,
+                    )
+
+                    val packet = Buffer()
+                    IncompatibleProtocol.serialize(incompatible, packet)
+
+                    log.warn { "Refusing connection from ${datagram.address} due to incompatible protocol version v${request.protocol}, expected v${Constants.PROTOCOL}." }
+
+                    return this.send(Datagram(packet, address = datagram.address))
+                }
+
+                val reply = OpenConnectionReply1(
+                    guid = this.guid,
+                    magic = Magic.MagicBytes,
+                    security = false,
+                    mtu = (request.mtu + Constants.UDP_HEADER_SIZE).toUShort().coerceAtMost(this.maxMtuSize)
+                )
+
+                val packet = Buffer()
+                OpenConnectionReply1.serialize(reply, packet)
+
+                return this.send(Datagram(packet, address = datagram.address))
             }
 
             PacketHeader.OPEN_CONNECTION_REQUEST_2 -> {
+                val request = OpenConnectionRequest2.deserialize(datagram.packet)
 
+                if (request.address.port != this.socket.localAddress.port()) {
+                    return log.warn { "Refusing connection from ${datagram.address} due to mismatched port." }
+                }
+
+                if (request.mtu !in this.minMtuSize..this.maxMtuSize) {
+                    return log.warn { "Refusing connection from ${datagram.address} due to invalid mtu size." }
+                }
+
+                if (this.connections.contains(datagram.address)) {
+                    return log.warn { "Refusing connection from ${datagram.address} due to already established connection." }
+                }
+
+                val reply = OpenConnectionReply2(
+                    guid = this.guid,
+                    magic = Magic.MagicBytes,
+                    address = Address(datagram.address as InetSocketAddress),
+                    mtu = request.mtu,
+                    encryption = false
+                )
+
+                log.debug { "Establishing connection from ${datagram.address} with mtu size of ${request.mtu}." }
+
+                this.connections[datagram.address] = Connection()
+
+                val packet = Buffer()
+                OpenConnectionReply2.serialize(reply, packet)
+
+                this.send(Datagram(packet, address = datagram.address))
+            }
+
+            else -> {
+                val id = header.toString(16).padStart(2, '0').uppercase()
+
+                log.debug { "Received unknown offline packet id \"0x$id\" from ${datagram.address}." }
             }
         }
     }
