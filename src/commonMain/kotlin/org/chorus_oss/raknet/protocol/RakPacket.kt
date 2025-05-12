@@ -7,11 +7,11 @@ import kotlinx.io.readUByte
 import kotlinx.io.writeUByte
 import org.chorus_oss.raknet.protocol.packets.*
 
-open class Packet(val id: UByte) {
+open class RakPacket(val id: UByte) {
     companion object {
         private val log = KotlinLogging.logger { }
 
-        val registry: Map<UByte, PacketCodec<out Packet>> by lazy {
+        val registry: Map<UByte, RakPacketCodec<out RakPacket>> by lazy {
             mapOf(
                 Ack.id to Ack,
                 ConnectedPing.id to ConnectedPing,
@@ -32,11 +32,11 @@ open class Packet(val id: UByte) {
             )
         }
 
-        fun <T : Packet> serialize(value: T): Buffer {
+        fun <T : RakPacket> serialize(value: T): Buffer {
             val buffer = Buffer()
 
             @Suppress("UNCHECKED_CAST")
-            val codec = registry[value.id] as? PacketCodec<T>
+            val codec = registry[value.id] as? RakPacketCodec<T>
             if (codec == null) {
                 log.error { "Couldn't find PacketCodec for id: ${value.id}" }
                 return buffer
@@ -48,14 +48,14 @@ open class Packet(val id: UByte) {
             return buffer
         }
 
-        fun deserialize(stream: Source): Packet {
+        fun deserialize(stream: Source): RakPacket {
             val id = stream.readUByte()
 
             @Suppress("UNCHECKED_CAST")
-            val codec = registry[id] as? PacketCodec<Packet>
+            val codec = registry[id] as? RakPacketCodec<RakPacket>
             if (codec == null) {
                 log.error { "Couldn't find PacketCodec for id: $id" }
-                return Packet(id)
+                return RakPacket(id)
             }
 
             return codec.deserialize(stream)

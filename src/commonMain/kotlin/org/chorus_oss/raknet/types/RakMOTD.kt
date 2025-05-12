@@ -1,6 +1,6 @@
 package org.chorus_oss.raknet.types
 
-data class MOTD(
+data class RakMOTD(
     var edition: String = "MCPE",
     var name: String,
     var protocol: Int,

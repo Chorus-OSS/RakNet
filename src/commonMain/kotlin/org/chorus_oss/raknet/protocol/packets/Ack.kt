@@ -1,19 +1,18 @@
 package org.chorus_oss.raknet.protocol.packets
 
 import kotlinx.io.*
-import org.chorus_oss.raknet.protocol.Packet
-import org.chorus_oss.raknet.protocol.PacketCodec
-import org.chorus_oss.raknet.protocol.packets.ConnectedPing.Companion
+import org.chorus_oss.raknet.protocol.RakPacket
+import org.chorus_oss.raknet.protocol.RakPacketCodec
 import org.chorus_oss.raknet.protocol.types.UMedium
 import org.chorus_oss.raknet.protocol.types.UMediumLE
-import org.chorus_oss.raknet.types.PacketHeader
+import org.chorus_oss.raknet.types.RakPacketID
 
 data class Ack(
     val sequences: List<UMedium>
-) : Packet(id) {
-    companion object : PacketCodec<Ack> {
+) : RakPacket(id) {
+    companion object : RakPacketCodec<Ack> {
         override val id: UByte
-            get() = PacketHeader.ACK
+            get() = RakPacketID.ACK
 
         override fun serialize(value: Ack, stream: Sink) {
             val sorted = value.sequences.sorted()

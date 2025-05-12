@@ -6,35 +6,35 @@ import io.ktor.network.sockets.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.io.readUByte
-import org.chorus_oss.raknet.connection.Connection
-import org.chorus_oss.raknet.protocol.Packet
+import org.chorus_oss.raknet.connection.RakConnection
+import org.chorus_oss.raknet.protocol.RakPacket
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.protocol.types.Magic
-import org.chorus_oss.raknet.types.Constants
-import org.chorus_oss.raknet.types.HeaderFlags
-import org.chorus_oss.raknet.types.MOTD
+import org.chorus_oss.raknet.types.Rak
+import org.chorus_oss.raknet.types.RakHeader
+import org.chorus_oss.raknet.types.RakMOTD
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.random.nextULong
 
-class Server(private val socket: BoundDatagramSocket) : CoroutineScope {
+class RakServer(private val socket: BoundDatagramSocket) : CoroutineScope {
     override val coroutineContext: CoroutineContext
         get() = Dispatchers.IO + SupervisorJob() + CoroutineName("RakNetServer")
 
-    private val connections: MutableMap<SocketAddress, Connection> = mutableMapOf()
+    val connections: MutableMap<SocketAddress, RakConnection> = mutableMapOf()
 
-    private val incoming: Channel<Connection> = Channel(32)
+    private val incoming: Channel<RakConnection> = Channel(Channel.UNLIMITED)
 
     private var alive: Boolean = false
 
     private var guid = Random.nextULong()
 
-    var maxMtuSize: UShort = Constants.MAX_MTU_SIZE
-    var minMtuSize: UShort = Constants.MIN_MTU_SIZE
+    var maxMtuSize: UShort = Rak.MAX_MTU_SIZE
+    var minMtuSize: UShort = Rak.MIN_MTU_SIZE
     var maxConnections: Int = 10
 
-    var motd: MOTD = MOTD(
+    var motd: RakMOTD = RakMOTD(
         edition = "MCPE",
         name = "Chorus/RakNet",
         protocol = 0,
@@ -60,6 +60,10 @@ class Server(private val socket: BoundDatagramSocket) : CoroutineScope {
         launch {
             while (alive) {
                 handle(socket.receive())
+
+                for (conn in connections.values) {
+                    conn.tick()
+                }
             }
         }
     }
@@ -79,19 +83,18 @@ class Server(private val socket: BoundDatagramSocket) : CoroutineScope {
     private suspend fun handle(datagram: Datagram) {
         val header = datagram.packet.peek().readUByte()
 
-        val offline = header and HeaderFlags.VALID == 0u.toUByte()
+        val offline = header and RakHeader.VALID == 0u.toUByte()
         if (offline) {
             return handleOffline(datagram)
         }
 
-        val connection = connections[datagram.address]
-        if (connection != null) {
-            // connection stuff
+        if (!offline) {
+            connections[datagram.address]?.incoming(datagram.packet)
         }
     }
 
     private suspend fun handleOffline(datagram: Datagram) {
-        when (val packet = Packet.deserialize(datagram.packet)) {
+        when (val packet = RakPacket.deserialize(datagram.packet)) {
             is UnconnectedPing -> {
                 val pong = UnconnectedPong(
                     timestamp = packet.timestamp,
@@ -105,30 +108,30 @@ class Server(private val socket: BoundDatagramSocket) : CoroutineScope {
                     ).toString()
                 )
 
-                return this.send(Datagram(Packet.serialize(pong), address = datagram.address))
+                return this.send(Datagram(RakPacket.serialize(pong), address = datagram.address))
             }
 
             is OpenConnectionRequest1 -> {
-                if (packet.protocol != Constants.PROTOCOL) {
+                if (packet.protocol != Rak.PROTOCOL) {
                     val incompatible = IncompatibleProtocol(
-                        protocol = Constants.PROTOCOL,
+                        protocol = Rak.PROTOCOL,
                         guid = this.guid,
                         magic = Magic.MagicBytes,
                     )
 
-                    log.warn { "Refusing connection from ${datagram.address} due to incompatible protocol version v${packet.protocol}, expected v${Constants.PROTOCOL}." }
+                    log.warn { "Refusing connection from ${datagram.address} due to incompatible protocol version v${packet.protocol}, expected v${Rak.PROTOCOL}." }
 
-                    return this.send(Datagram(Packet.serialize(incompatible), address = datagram.address))
+                    return this.send(Datagram(RakPacket.serialize(incompatible), address = datagram.address))
                 }
 
                 val reply = OpenConnectionReply1(
                     guid = this.guid,
                     magic = Magic.MagicBytes,
                     security = false,
-                    mtu = (packet.mtu + Constants.UDP_HEADER_SIZE).toUShort().coerceAtMost(this.maxMtuSize)
+                    mtu = (packet.mtu + Rak.UDP_HEADER_SIZE).toUShort().coerceAtMost(this.maxMtuSize)
                 )
 
-                return this.send(Datagram(Packet.serialize(reply), address = datagram.address))
+                return this.send(Datagram(RakPacket.serialize(reply), address = datagram.address))
             }
 
             is OpenConnectionRequest2 -> {
@@ -154,9 +157,9 @@ class Server(private val socket: BoundDatagramSocket) : CoroutineScope {
 
                 log.info { "Establishing connection from ${datagram.address} with mtu size of ${packet.mtu}." }
 
-                this.connections[datagram.address] = Connection()
+                this.connections[datagram.address] = RakConnection(this, datagram.address, packet.client, packet.mtu)
 
-                this.send(Datagram(Packet.serialize(reply), address = datagram.address))
+                this.send(Datagram(RakPacket.serialize(reply), address = datagram.address))
             }
 
             else -> log.debug { "Received unknown offline packet id \"0x${packet.id}\" from ${datagram.address}." }
@@ -168,16 +171,16 @@ class Server(private val socket: BoundDatagramSocket) : CoroutineScope {
 
         private val log = KotlinLogging.logger {}
 
-        suspend fun bind(hostname: String, port: Int): Server {
+        suspend fun bind(hostname: String, port: Int): RakServer {
             return bind(InetSocketAddress(hostname, port))
         }
 
-        suspend fun bind(address: SocketAddress): Server {
+        suspend fun bind(address: SocketAddress): RakServer {
             val socket = aSocket(selector)
                 .udp()
                 .bind(address)
 
-            return Server(socket)
+            return RakServer(socket)
         }
     }
 }

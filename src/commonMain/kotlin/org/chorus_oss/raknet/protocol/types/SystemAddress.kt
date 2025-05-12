@@ -2,9 +2,9 @@ package org.chorus_oss.raknet.protocol.types
 
 import kotlinx.io.Sink
 import kotlinx.io.Source
-import org.chorus_oss.raknet.protocol.Codec
+import org.chorus_oss.raknet.protocol.RakCodec
 
-object SystemAddress : Codec<List<Address>> {
+object SystemAddress : RakCodec<List<Address>> {
     override fun serialize(value: List<Address>, stream: Sink) {
         for (i in 0 until 20) {
             Address.serialize(

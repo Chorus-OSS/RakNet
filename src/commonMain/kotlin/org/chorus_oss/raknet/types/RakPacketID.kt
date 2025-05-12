@@ -1,6 +1,6 @@
 package org.chorus_oss.raknet.types
 
-object PacketHeader {
+object RakPacketID {
     const val CONNECTED_PING: UByte = 0x00u
     const val UNCONNECTED_PING: UByte = 0x01u
     const val CONNECTED_PONG: UByte = 0x03u

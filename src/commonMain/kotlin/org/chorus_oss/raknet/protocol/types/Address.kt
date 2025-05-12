@@ -3,7 +3,7 @@ package org.chorus_oss.raknet.protocol.types
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.sockets.*
 import kotlinx.io.*
-import org.chorus_oss.raknet.protocol.Codec
+import org.chorus_oss.raknet.protocol.RakCodec
 
 data class Address(
     val hostname: String,
@@ -23,7 +23,7 @@ data class Address(
         }
     )
 
-    companion object : Codec<Address> {
+    companion object : RakCodec<Address> {
         private val log = KotlinLogging.logger {}
 
         override fun serialize(value: Address, stream: Sink) {
@@ -33,7 +33,7 @@ data class Address(
                 4u.toUByte() -> {
                     val bits = value.hostname.split(".", limit = 4)
                     for (bit in bits) {
-                        stream.writeUByte(bit.toUByte(10))
+                        stream.writeUByte(bit.toUByte())
                     }
                     stream.writeUShort(value.port.toUShort())
                 }
@@ -57,7 +57,7 @@ data class Address(
             return when (val version = stream.readUByte()) {
                 4u.toUByte() -> {
                     val bytes = stream.readByteArray(4)
-                    val address = bytes.joinToString { it.toString(10) }
+                    val address = bytes.joinToString { it.toString() }
                     val port = stream.readUShort().toInt()
                     Address(address, port, version)
                 }

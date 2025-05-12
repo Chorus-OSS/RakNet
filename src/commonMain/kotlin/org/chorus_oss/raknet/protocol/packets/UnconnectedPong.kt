@@ -4,21 +4,21 @@ import kotlinx.io.Sink
 import kotlinx.io.Source
 import kotlinx.io.readULong
 import kotlinx.io.writeULong
-import org.chorus_oss.raknet.protocol.Packet
-import org.chorus_oss.raknet.protocol.PacketCodec
+import org.chorus_oss.raknet.protocol.RakPacket
+import org.chorus_oss.raknet.protocol.RakPacketCodec
 import org.chorus_oss.raknet.protocol.types.Magic
 import org.chorus_oss.raknet.protocol.types.String16
-import org.chorus_oss.raknet.types.PacketHeader
+import org.chorus_oss.raknet.types.RakPacketID
 
 data class UnconnectedPong(
     val timestamp: ULong,
     val guid: ULong,
     val magic: List<UByte>,
     val message: String,
-) : Packet(id) {
-    companion object : PacketCodec<UnconnectedPong> {
+) : RakPacket(id) {
+    companion object : RakPacketCodec<UnconnectedPong> {
         override val id: UByte
-            get() = PacketHeader.UNCONNECTED_PONG
+            get() = RakPacketID.UNCONNECTED_PONG
 
         override fun serialize(value: UnconnectedPong, stream: Sink) {
             stream.writeULong(value.timestamp)

@@ -1,9 +1,9 @@
 package org.chorus_oss.raknet.protocol.types
 
 import kotlinx.io.*
-import org.chorus_oss.raknet.protocol.Codec
+import org.chorus_oss.raknet.protocol.RakCodec
 
-object Magic : Codec<List<UByte>> {
+object Magic : RakCodec<List<UByte>> {
     val MagicBytes
         get() = listOf<UByte>(
             0x00u,

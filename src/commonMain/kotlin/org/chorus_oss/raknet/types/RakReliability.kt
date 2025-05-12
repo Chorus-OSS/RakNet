@@ -1,6 +1,6 @@
 package org.chorus_oss.raknet.types
 
-enum class Reliability {
+enum class RakReliability {
     Unreliable,
     UnreliableSequenced,
     Reliable,

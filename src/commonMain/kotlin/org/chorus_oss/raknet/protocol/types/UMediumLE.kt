@@ -4,9 +4,9 @@ import kotlinx.io.Sink
 import kotlinx.io.Source
 import kotlinx.io.readUByte
 import kotlinx.io.writeUByte
-import org.chorus_oss.raknet.protocol.Codec
+import org.chorus_oss.raknet.protocol.RakCodec
 
-object UMediumLE : Codec<UMedium> {
+object UMediumLE : RakCodec<UMedium> {
     override fun serialize(value: UMedium, stream: Sink) {
         val medium = value and 0xFFFFFFu
         stream.writeUByte(medium.toUByte())

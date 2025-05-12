@@ -1,11 +1,11 @@
 package org.chorus_oss.raknet.protocol.packets
 
 import kotlinx.io.*
-import org.chorus_oss.raknet.protocol.Packet
-import org.chorus_oss.raknet.protocol.PacketCodec
+import org.chorus_oss.raknet.protocol.RakPacket
+import org.chorus_oss.raknet.protocol.RakPacketCodec
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.protocol.types.SystemAddress
-import org.chorus_oss.raknet.types.PacketHeader
+import org.chorus_oss.raknet.types.RakPacketID
 
 data class ConnectionRequestAccepted(
     val clientAddress: Address,
@@ -13,10 +13,10 @@ data class ConnectionRequestAccepted(
     val systemAddress: List<Address>,
     val requestTimestamp: ULong,
     val timestamp: ULong,
-) : Packet(id) {
-    companion object : PacketCodec<ConnectionRequestAccepted> {
+) : RakPacket(id) {
+    companion object : RakPacketCodec<ConnectionRequestAccepted> {
         override val id: UByte
-            get() = PacketHeader.CONNECTION_REQUEST_ACCEPTED
+            get() = RakPacketID.CONNECTION_REQUEST_ACCEPTED
 
         override fun serialize(value: ConnectionRequestAccepted, stream: Sink) {
             Address.serialize(value.clientAddress, stream)

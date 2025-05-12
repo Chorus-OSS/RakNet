@@ -1,11 +1,11 @@
 package org.chorus_oss.raknet.protocol.packets
 
 import kotlinx.io.*
-import org.chorus_oss.raknet.protocol.Packet
-import org.chorus_oss.raknet.protocol.PacketCodec
+import org.chorus_oss.raknet.protocol.RakPacket
+import org.chorus_oss.raknet.protocol.RakPacketCodec
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.protocol.types.Magic
-import org.chorus_oss.raknet.types.PacketHeader
+import org.chorus_oss.raknet.types.RakPacketID
 
 data class OpenConnectionReply2(
     val magic: List<UByte>,
@@ -13,10 +13,10 @@ data class OpenConnectionReply2(
     val address: Address,
     val mtu: UShort,
     val encryption: Boolean
-) : Packet(id) {
-    companion object : PacketCodec<OpenConnectionReply2> {
+) : RakPacket(id) {
+    companion object : RakPacketCodec<OpenConnectionReply2> {
         override val id: UByte
-            get() = PacketHeader.OPEN_CONNECTION_REPLY_2
+            get() = RakPacketID.OPEN_CONNECTION_REPLY_2
 
         override fun serialize(value: OpenConnectionReply2, stream: Sink) {
             Magic.serialize(value.magic, stream)

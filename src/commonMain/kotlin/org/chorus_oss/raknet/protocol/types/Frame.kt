@@ -1,21 +1,24 @@
 package org.chorus_oss.raknet.protocol.types
 
+import io.github.oshai.kotlinlogging.KotlinLogging
+import io.ktor.utils.io.core.*
 import kotlinx.io.*
-import org.chorus_oss.raknet.protocol.Codec
-import org.chorus_oss.raknet.types.HeaderFlags
-import org.chorus_oss.raknet.types.Reliability
+import kotlinx.io.Buffer
+import org.chorus_oss.raknet.protocol.RakCodec
+import org.chorus_oss.raknet.types.RakHeader
+import org.chorus_oss.raknet.types.RakReliability
 import kotlin.math.ceil
 
 data class Frame(
-    val reliability: Reliability,
-    val payload: Buffer,
-    val reliableIndex: UMedium = 0u,
-    val sequenceIndex: UMedium = 0u,
-    val orderIndex: UMedium = 0u,
-    val orderChannel: UByte = 0u,
-    val splitSize: UInt = 0u,
-    val splitID: UShort = 0u,
-    val splitIndex: UInt = 0u
+    var reliability: RakReliability,
+    var payload: Buffer,
+    var reliableIndex: UMedium = 0u,
+    var sequenceIndex: UMedium = 0u,
+    var orderIndex: UMedium = 0u,
+    var orderChannel: UByte = 0u,
+    var splitSize: UInt = 0u,
+    var splitID: UShort = 0u,
+    var splitIndex: UInt = 0u
 ) {
     val isSplit: Boolean
         get() = splitSize > 0u
@@ -25,7 +28,7 @@ data class Frame(
             var length: Long = 0
 
             length += 3
-            length += payload.size
+            length += payload.remaining
 
             if (reliability.isReliable) { length += 3 }
             if (reliability.isSequenced) { length += 3 }
@@ -35,13 +38,15 @@ data class Frame(
             return length
         }
 
-    companion object : Codec<List<Frame>> {
+    companion object : RakCodec<List<Frame>> {
+        private val log = KotlinLogging.logger {}
+
         override fun serialize(value: List<Frame>, stream: Sink) {
             for (frame in value) {
                 stream.writeUByte(
                     (frame.reliability.ordinal shl 5).toUByte() or (
                         when {
-                            frame.isSplit -> HeaderFlags.SPLIT
+                            frame.isSplit -> RakHeader.SPLIT
                             else -> 0u
                         }
                     )
@@ -77,8 +82,8 @@ data class Frame(
 
             do {
                 val header = stream.readUByte()
-                val reliability = Reliability.entries[((header.toUInt() and 0xE0u) shr 5).toInt()]
-                val split = (header and HeaderFlags.SPLIT) != 0u.toUByte()
+                val reliability = RakReliability.entries[((header.toUInt() and 0xE0u) shr 5).toInt()]
+                val split = (header and RakHeader.SPLIT) != 0u.toUByte()
 
                 val length = ceil(stream.readUShort().toFloat() / 8f).toLong()
 
@@ -123,7 +128,7 @@ data class Frame(
                     splitIndex,
                 ))
 
-            } while (!stream.exhausted())
+            } while (!stream.endOfInput)
 
             return frames
         }

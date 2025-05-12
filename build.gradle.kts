@@ -11,7 +11,7 @@ repositories {
 }
 
 kotlin {
-    jvm()
+    jvm() // TODO: Fix SocketAddress issue (returns hostName instead of address)
     linuxX64()
     mingwX64()
 
@@ -25,12 +25,19 @@ kotlin {
                 api(libs.ktor.network)
                 implementation(libs.kotlin.stdlib)
                 implementation(libs.kotlin.logging)
+                implementation(libs.kotlinx.datetime)
             }
         }
 
         val commonTest by getting {
             dependencies {
                 implementation(libs.kotlin.test)
+            }
+        }
+
+        jvmMain {
+            dependencies {
+                implementation(libs.slf4j.simple)
             }
         }
     }

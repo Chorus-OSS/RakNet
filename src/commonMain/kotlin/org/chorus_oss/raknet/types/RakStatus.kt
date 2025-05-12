@@ -1,6 +1,6 @@
 package org.chorus_oss.raknet.types
 
-enum class Status {
+enum class RakStatus {
     Connecting,
     Connected,
     Disconnecting,

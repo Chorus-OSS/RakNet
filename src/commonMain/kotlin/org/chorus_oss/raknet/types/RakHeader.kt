@@ -1,6 +1,6 @@
 package org.chorus_oss.raknet.types
 
-object HeaderFlags {
+object RakHeader {
     const val VALID: UByte = 0x80u
     const val ACK: UByte = 0x40u
     const val NAK: UByte = 0x20u

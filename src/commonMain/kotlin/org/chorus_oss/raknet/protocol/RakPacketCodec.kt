@@ -1,5 +1,5 @@
 package org.chorus_oss.raknet.protocol
 
-interface PacketCodec<T> : Codec<T> {
+interface RakPacketCodec<T> : RakCodec<T> {
     val id: UByte
 }
