@@ -1,5 +1,6 @@
 package org.chorus_oss.raknet.server
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
 import kotlinx.coroutines.*
@@ -65,7 +66,7 @@ class Server(private val socket: BoundDatagramSocket) : CoroutineScope {
                     magic = Magic.MagicBytes,
                     message = listOf(
                         "MCPE",
-                        "Raknet Server",
+                        "RakNet Server",
                         100,
                         "1.0.0",
                         0,
@@ -99,8 +100,10 @@ class Server(private val socket: BoundDatagramSocket) : CoroutineScope {
     companion object {
         private val selector: SelectorManager = SelectorManager(Dispatchers.IO + CoroutineName("RakNetServer - SelectorManager"))
 
-        suspend fun bind(ip: String, port: Int): Server {
-            return bind(InetSocketAddress(ip, port))
+        private val log = KotlinLogging.logger {}
+
+        suspend fun bind(hostname: String, port: Int): Server {
+            return bind(InetSocketAddress(hostname, port))
         }
 
         suspend fun bind(address: SocketAddress): Server {

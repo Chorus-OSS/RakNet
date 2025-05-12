@@ -5,10 +5,8 @@ import kotlin.test.Test
 class Main {
     @Test
     fun main() {
-        val server = Server()
-
         runBlocking {
-            server.bind("0.0.0.0", 19132)
+            val server = Server.bind("0.0.0.0", 19132)
             server.start()
 
             while (true) {}
