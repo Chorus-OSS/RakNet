@@ -19,7 +19,7 @@ import kotlin.math.ceil
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
 
-class RakConnection(
+open class RakConnection(
     private val server: RakServer,
     private val address: SocketAddress,
     val guid: ULong,
@@ -48,6 +48,14 @@ class RakConnection(
     private var outputSequence: UInt = 0u
     private var outputSplitIndex: UInt = 0u
     private var outputReliableIndex: UMedium = 0u
+
+    open fun onConnect() {}
+
+    open fun onDisconnect() {}
+
+    open fun onPacket(stream: Source) {}
+
+    open fun onError(error: Error) {}
 
     suspend fun tick() {
         if (lastUpdate.plus(15000.toDuration(DurationUnit.MILLISECONDS)) < Clock.System.now()) {
@@ -112,7 +120,7 @@ class RakConnection(
 
         sendFrame(frame, RakPriority.Immediate)
 
-        // disconnect event
+        onDisconnect()
         server.connections.remove(address)
 
         status = RakStatus.Disconnected
@@ -133,7 +141,7 @@ class RakConnection(
 
                 log.debug { "Received unknown online packet \"0x$id\" from $address" }
 
-                // error event
+                onError(Error("Received unknown online packet \"0x$id\" from $address"))
             }
         }
     }
@@ -155,7 +163,7 @@ class RakConnection(
 
                 RakPacketID.NEW_INCOMING_CONNECTION -> {
                     status = RakStatus.Connected
-                    // connected event
+                    onConnect()
                 }
 
                 else -> {
@@ -163,7 +171,7 @@ class RakConnection(
 
                     log.debug { "Received unknown online packet \"0x$id\" from $address" }
 
-                    // error event
+                    onError(Error("Received unknown online packet \"0x$id\" from $address"))
                 }
             }
 
@@ -173,7 +181,7 @@ class RakConnection(
         when (header) {
             RakPacketID.DISCONNECT -> {
                 status = RakStatus.Disconnecting
-                // disconnect event
+                onConnect()
                 server.connections.remove(address)
                 status = RakStatus.Disconnected
             }
@@ -183,7 +191,7 @@ class RakConnection(
             }
 
             0xFE.toUByte() -> {
-                // gamepacked event (encapsulated)
+                onPacket(stream)
             }
 
             else -> {
@@ -191,7 +199,7 @@ class RakConnection(
 
                 log.debug { "Received unknown online packet \"0x$id\" from $address" }
 
-                // error event
+                onError(Error("Received unknown online packet \"0x$id\" from $address"))
             }
         }
     }
@@ -225,7 +233,7 @@ class RakConnection(
         if (receivedFrameSequences.contains(frameSet.sequence)) {
             log.debug { "Received duplicate frameset ${frameSet.sequence} from $address" }
 
-            return // error event
+            return onError(Error("Received duplicate frameset ${frameSet.sequence} from $address"))
         }
 
         lostFrameSequences.remove(frameSet.sequence)
@@ -233,7 +241,7 @@ class RakConnection(
         if (lastInputSequence != null && (frameSet.sequence < lastInputSequence!! || frameSet.sequence == lastInputSequence!!)) {
             log.debug { "Received out of order frameset ${frameSet.sequence} from $address" }
 
-            return // error event
+            return onError(Error("Received out of order frameset ${frameSet.sequence} from $address"))
         }
 
         receivedFrameSequences.add(frameSet.sequence)
@@ -261,7 +269,7 @@ class RakConnection(
             ) {
                 log.debug { "Received out of order frame ${frame.sequenceIndex} from $address" }
 
-                return // error event
+                return onError(Error("Received out of order frame ${frame.sequenceIndex} from $address"))
             }
 
             inputHighestSequenceIndex[frame.orderChannel.toInt()] = frame.sequenceIndex + 1u

@@ -4,28 +4,27 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
 import kotlinx.io.Buffer
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.connection.RakConnection
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.protocol.types.Magic
-import org.chorus_oss.raknet.types.Rak
-import org.chorus_oss.raknet.types.RakHeader
-import org.chorus_oss.raknet.types.RakMOTD
-import org.chorus_oss.raknet.types.RakPacketID
+import org.chorus_oss.raknet.types.*
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.random.nextULong
 
-class RakServer(private val socket: BoundDatagramSocket) : CoroutineScope {
+class RakServer(
+    private val socket: BoundDatagramSocket,
+    private val connectionFactory: RakConnectionFactory = RakConnectionFactory { server, address, guid, mtu ->
+        RakConnection(server, address, guid, mtu)
+    }
+) : CoroutineScope {
     override val coroutineContext: CoroutineContext
         get() = Dispatchers.IO + SupervisorJob() + CoroutineName("RakNetServer")
 
     val connections: MutableMap<SocketAddress, RakConnection> = mutableMapOf()
-
-    private val incoming: Channel<RakConnection> = Channel(Channel.UNLIMITED)
 
     private var alive: Boolean = false
 
@@ -185,7 +184,7 @@ class RakServer(private val socket: BoundDatagramSocket) : CoroutineScope {
 
                 log.info { "Establishing connection from ${datagram.address} with mtu size of ${packet.mtu}." }
 
-                this.connections[datagram.address] = RakConnection(this, datagram.address, packet.client, packet.mtu)
+                this.connections[datagram.address] = connectionFactory.create(this, datagram.address, packet.client, packet.mtu)
 
                 this.send(
                     Datagram(
