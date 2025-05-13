@@ -20,8 +20,8 @@ import kotlin.time.DurationUnit
 import kotlin.time.toDuration
 
 open class RakConnection(
-    private val server: RakServer,
-    private val address: SocketAddress,
+    val server: RakServer,
+    val address: SocketAddress,
     val guid: ULong,
     val mtu: UShort,
 ) {

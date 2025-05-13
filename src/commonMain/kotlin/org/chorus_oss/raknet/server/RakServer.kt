@@ -15,11 +15,9 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.random.nextULong
 
-class RakServer(
+class RakServer private constructor(
     private val socket: BoundDatagramSocket,
-    private val connectionFactory: RakConnectionFactory = RakConnectionFactory { server, address, guid, mtu ->
-        RakConnection(server, address, guid, mtu)
-    }
+    private val connectionFactory: RakConnectionFactory
 ) : CoroutineScope {
     override val coroutineContext: CoroutineContext
         get() = Dispatchers.IO + SupervisorJob() + CoroutineName("RakNetServer")
@@ -210,16 +208,16 @@ class RakServer(
 
         private val log = KotlinLogging.logger {}
 
-        suspend fun bind(hostname: String, port: Int): RakServer {
-            return bind(InetSocketAddress(hostname, port))
+        suspend fun create(hostname: String, port: Int, connectionFactory: RakConnectionFactory = RakConnectionFactory()): RakServer {
+            return create(InetSocketAddress(hostname, port), connectionFactory)
         }
 
-        suspend fun bind(address: SocketAddress): RakServer {
+        suspend fun create(address: SocketAddress, connectionFactory: RakConnectionFactory = RakConnectionFactory()): RakServer {
             val socket = aSocket(selector)
                 .udp()
                 .bind(address)
 
-            return RakServer(socket)
+            return RakServer(socket, connectionFactory)
         }
     }
 }
