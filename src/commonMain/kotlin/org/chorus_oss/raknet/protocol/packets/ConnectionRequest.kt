@@ -1,27 +1,25 @@
 package org.chorus_oss.raknet.protocol.packets
 
-import kotlinx.io.Sink
-import kotlinx.io.Source
-import kotlinx.io.readULong
-import kotlinx.io.writeULong
-import org.chorus_oss.raknet.protocol.RakPacket
+import kotlinx.io.*
 import org.chorus_oss.raknet.protocol.RakPacketCodec
 import org.chorus_oss.raknet.types.RakPacketID
 
 data class ConnectionRequest(
     val clientGuid: ULong,
     val clientTimestamp: ULong,
-) : RakPacket(id) {
+) {
     companion object : RakPacketCodec<ConnectionRequest> {
         override val id: UByte
             get() = RakPacketID.CONNECTION_REQUEST
 
         override fun serialize(value: ConnectionRequest, stream: Sink) {
+            stream.writeUByte(id) // Packet ID
             stream.writeULong(value.clientGuid)
             stream.writeULong(value.clientTimestamp)
         }
 
         override fun deserialize(stream: Source): ConnectionRequest {
+            stream.readUByte() // Packet ID
             return ConnectionRequest(
                 clientGuid = stream.readULong(),
                 clientTimestamp = stream.readULong(),

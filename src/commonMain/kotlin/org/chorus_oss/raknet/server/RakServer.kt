@@ -5,15 +5,16 @@ import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
+import kotlinx.io.Buffer
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.connection.RakConnection
-import org.chorus_oss.raknet.protocol.RakPacket
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.protocol.types.Magic
 import org.chorus_oss.raknet.types.Rak
 import org.chorus_oss.raknet.types.RakHeader
 import org.chorus_oss.raknet.types.RakMOTD
+import org.chorus_oss.raknet.types.RakPacketID
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.random.nextULong
@@ -94,8 +95,10 @@ class RakServer(private val socket: BoundDatagramSocket) : CoroutineScope {
     }
 
     private suspend fun handleOffline(datagram: Datagram) {
-        when (val packet = RakPacket.deserialize(datagram.packet)) {
-            is UnconnectedPing -> {
+        when (val header = datagram.packet.peek().readUByte()) {
+            RakPacketID.UNCONNECTED_PING -> {
+                val packet = UnconnectedPing.deserialize(datagram.packet)
+
                 val pong = UnconnectedPong(
                     timestamp = packet.timestamp,
                     guid = guid,
@@ -108,10 +111,19 @@ class RakServer(private val socket: BoundDatagramSocket) : CoroutineScope {
                     ).toString()
                 )
 
-                return this.send(Datagram(RakPacket.serialize(pong), address = datagram.address))
+                return this.send(
+                    Datagram(
+                        packet = Buffer().also {
+                            UnconnectedPong.serialize(pong, it)
+                        },
+                        address = datagram.address
+                    )
+                )
             }
 
-            is OpenConnectionRequest1 -> {
+            RakPacketID.OPEN_CONNECTION_REQUEST_1 -> {
+                val packet = OpenConnectionRequest1.deserialize(datagram.packet)
+
                 if (packet.protocol != Rak.PROTOCOL) {
                     val incompatible = IncompatibleProtocol(
                         protocol = Rak.PROTOCOL,
@@ -121,7 +133,14 @@ class RakServer(private val socket: BoundDatagramSocket) : CoroutineScope {
 
                     log.warn { "Refusing connection from ${datagram.address} due to incompatible protocol version v${packet.protocol}, expected v${Rak.PROTOCOL}." }
 
-                    return this.send(Datagram(RakPacket.serialize(incompatible), address = datagram.address))
+                    return this.send(
+                        Datagram(
+                            packet = Buffer().also {
+                                IncompatibleProtocol.serialize(incompatible, it)
+                            },
+                            address = datagram.address
+                        )
+                    )
                 }
 
                 val reply = OpenConnectionReply1(
@@ -131,10 +150,19 @@ class RakServer(private val socket: BoundDatagramSocket) : CoroutineScope {
                     mtu = (packet.mtu + Rak.UDP_HEADER_SIZE).toUShort().coerceAtMost(this.maxMtuSize)
                 )
 
-                return this.send(Datagram(RakPacket.serialize(reply), address = datagram.address))
+                return this.send(
+                    Datagram(
+                        packet = Buffer().also {
+                            OpenConnectionReply1.serialize(reply, it)
+                        },
+                        address = datagram.address
+                    )
+                )
             }
 
-            is OpenConnectionRequest2 -> {
+            RakPacketID.OPEN_CONNECTION_REQUEST_2 -> {
+                val packet = OpenConnectionRequest2.deserialize(datagram.packet)
+
                 if (packet.address.port != this.socket.localAddress.port()) {
                     return log.warn { "Refusing connection from ${datagram.address} due to mismatched port." }
                 }
@@ -159,10 +187,22 @@ class RakServer(private val socket: BoundDatagramSocket) : CoroutineScope {
 
                 this.connections[datagram.address] = RakConnection(this, datagram.address, packet.client, packet.mtu)
 
-                this.send(Datagram(RakPacket.serialize(reply), address = datagram.address))
+                this.send(
+                    Datagram(
+                        packet = Buffer().also {
+                            OpenConnectionReply2.serialize(reply, it)
+                        },
+                        address = datagram.address
+                    )
+                )
             }
 
-            else -> log.debug { "Received unknown offline packet id \"0x${packet.id}\" from ${datagram.address}." }
+            else -> {
+                val id = header.toString(16).padStart(2, '0').uppercase()
+                log.debug {
+                    "Received unknown offline packet id \"0x${id}\" from ${datagram.address}."
+                }
+            }
         }
     }
 

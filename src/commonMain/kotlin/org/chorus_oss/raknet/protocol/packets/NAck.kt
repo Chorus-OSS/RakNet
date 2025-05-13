@@ -1,7 +1,6 @@
 package org.chorus_oss.raknet.protocol.packets
 
 import kotlinx.io.*
-import org.chorus_oss.raknet.protocol.RakPacket
 import org.chorus_oss.raknet.protocol.RakPacketCodec
 import org.chorus_oss.raknet.protocol.types.UMedium
 import org.chorus_oss.raknet.protocol.types.UMediumLE
@@ -9,12 +8,14 @@ import org.chorus_oss.raknet.types.RakPacketID
 
 data class NAck(
     val sequences: List<UMedium>
-) : RakPacket(id) {
+) {
     companion object : RakPacketCodec<NAck> {
         override val id: UByte
             get() = RakPacketID.NACK
 
         override fun serialize(value: NAck, stream: Sink) {
+            stream.writeUByte(id) // Packet ID
+
             val sorted = value.sequences.sorted()
 
             val buffer = Buffer()
@@ -41,6 +42,8 @@ data class NAck(
         }
 
         override fun deserialize(stream: Source): NAck {
+            stream.readUByte() // Packet ID
+
             val size = stream.readUShort().toInt()
 
             val sequences = mutableListOf<UMedium>()

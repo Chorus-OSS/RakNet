@@ -9,7 +9,6 @@ import kotlinx.io.Buffer
 import kotlinx.io.Source
 import kotlinx.io.readByteArray
 import kotlinx.io.readUByte
-import org.chorus_oss.raknet.protocol.RakPacket
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.protocol.types.Frame
@@ -26,29 +25,29 @@ class RakConnection(
     val guid: ULong,
     val mtu: UShort,
 ) {
-    var status: RakStatus = RakStatus.Connecting
-    var lastUpdate: Instant = Clock.System.now()
+    private var status: RakStatus = RakStatus.Connecting
+    private var lastUpdate: Instant = Clock.System.now()
 
-    val receivedFrameSequences = mutableSetOf<UInt>()
-    val lostFrameSequences = mutableSetOf<UInt>()
-    val inputHighestSequenceIndex = MutableList<UInt>(32) { 0u }
-    val fragmentsQueue = mutableMapOf<UShort, MutableMap<UInt, Frame>>()
+    private val receivedFrameSequences = mutableSetOf<UInt>()
+    private val lostFrameSequences = mutableSetOf<UInt>()
+    private val inputHighestSequenceIndex = MutableList<UInt>(32) { 0u }
+    private val fragmentsQueue = mutableMapOf<UShort, MutableMap<UInt, Frame>>()
 
-    val inputOrderIndex = MutableList<UMedium>(32) { 0u }
-    val inputOrderingQueue = mutableMapOf<UByte, MutableMap<UMedium, Frame>>(
+    private val inputOrderIndex = MutableList<UMedium>(32) { 0u }
+    private val inputOrderingQueue = mutableMapOf<UByte, MutableMap<UMedium, Frame>>(
         *(Array(32) { Pair(0u.toUByte(), mutableMapOf()) }),
     )
-    var lastInputSequence: UInt? = null;
+    private var lastInputSequence: UInt? = null;
 
-    val outputOrderIndex = MutableList<UMedium>(32) { 0u }
-    val outputSequenceIndex = MutableList<UMedium>(32) { 0u }
+    private val outputOrderIndex = MutableList<UMedium>(32) { 0u }
+    private val outputSequenceIndex = MutableList<UMedium>(32) { 0u }
 
-    val outputFrames = mutableSetOf<Frame>()
-    val outputBackup = mutableMapOf<UInt, List<Frame>>()
+    private val outputFrames = mutableSetOf<Frame>()
+    private val outputBackup = mutableMapOf<UInt, List<Frame>>()
 
-    var outputSequence: UInt = 0u
-    var outputSplitIndex: UInt = 0u
-    var outputReliableIndex: UMedium = 0u
+    private var outputSequence: UInt = 0u
+    private var outputSplitIndex: UInt = 0u
+    private var outputReliableIndex: UMedium = 0u
 
     suspend fun tick() {
         if (lastUpdate.plus(15000.toDuration(DurationUnit.MILLISECONDS)) < Clock.System.now()) {
@@ -68,7 +67,14 @@ class RakConnection(
 
             receivedFrameSequences.clear()
 
-            server.send(Datagram(RakPacket.serialize(ack), address))
+            server.send(
+                Datagram(
+                    packet = Buffer().also {
+                        Ack.serialize(ack, it)
+                    },
+                    address = address
+                )
+            )
         }
 
         if (lostFrameSequences.isNotEmpty()) {
@@ -78,7 +84,14 @@ class RakConnection(
 
             lostFrameSequences.clear()
 
-            server.send(Datagram(RakPacket.serialize(nack), address))
+            server.send(
+                Datagram(
+                    packet = Buffer().also {
+                        NAck.serialize(nack, it)
+                    },
+                    address = address
+                )
+            )
         }
 
         this.sendQueue(outputFrames.size)
@@ -92,7 +105,9 @@ class RakConnection(
         val frame = Frame(
             reliability = RakReliability.ReliableOrdered,
             orderChannel = 0u,
-            payload = RakPacket.serialize(disconnect)
+            payload = Buffer().also {
+                Disconnect.serialize(disconnect, it)
+            }
         )
 
         sendFrame(frame, RakPriority.Immediate)
@@ -182,7 +197,7 @@ class RakConnection(
     }
 
     private fun ack(stream: Source) {
-        val ack = RakPacket.deserialize(stream) as Ack
+        val ack = Ack.deserialize(stream)
 
         for (sequence in ack.sequences) {
             if (!outputBackup.contains(sequence)) {
@@ -194,7 +209,7 @@ class RakConnection(
     }
 
     private suspend fun nack(stream: Source) {
-        val nack = RakPacket.deserialize(stream) as NAck
+        val nack = NAck.deserialize(stream)
 
         for (sequence in nack.sequences) {
             val frames = outputBackup[sequence] ?: emptyList()
@@ -205,7 +220,6 @@ class RakConnection(
     }
 
     private suspend fun handleIncomingFrameSet(stream: Source) {
-        stream.readUByte()
         val frameSet = FrameSet.deserialize(stream)
 
         if (receivedFrameSequences.contains(frameSet.sequence)) {
@@ -375,11 +389,18 @@ class RakConnection(
             outputFrames.remove(frame)
         }
 
-        server.send(Datagram(RakPacket.serialize(frameSet), address))
+        server.send(
+            Datagram(
+                packet = Buffer().also {
+                    FrameSet.serialize(frameSet, it)
+                },
+                address = address
+            )
+        )
     }
 
     private suspend fun handleIncomingConnectionRequest(stream: Source) {
-        val request = RakPacket.deserialize(stream) as ConnectionRequest
+        val request = ConnectionRequest.deserialize(stream)
 
         val accepted = ConnectionRequestAccepted(
             clientAddress = Address(address as InetSocketAddress),
@@ -392,14 +413,16 @@ class RakConnection(
         val frame = Frame(
             reliability = RakReliability.ReliableOrdered,
             orderChannel = 0u,
-            payload = RakPacket.serialize(accepted),
+            payload = Buffer().also {
+                ConnectionRequestAccepted.serialize(accepted, it)
+            },
         )
 
         sendFrame(frame, RakPriority.Normal)
     }
 
     private suspend fun handleIncomingConnectedPing(stream: Source) {
-        val ping = RakPacket.deserialize(stream) as ConnectedPing
+        val ping = ConnectedPing.deserialize(stream)
 
         val pong = ConnectedPong(
             pingTimestamp = ping.timestamp,
@@ -409,7 +432,9 @@ class RakConnection(
         val frame = Frame(
             reliability = RakReliability.ReliableOrdered,
             orderChannel = 0u,
-            payload = RakPacket.serialize(pong),
+            payload = Buffer().also {
+                ConnectedPong.serialize(pong, it)
+            },
         )
 
         sendFrame(frame, RakPriority.Normal)
