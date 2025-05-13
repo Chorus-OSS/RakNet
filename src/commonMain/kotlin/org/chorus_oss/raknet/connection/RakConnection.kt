@@ -181,7 +181,7 @@ open class RakConnection(
         when (header) {
             RakPacketID.DISCONNECT -> {
                 status = RakStatus.Disconnecting
-                onConnect()
+                onDisconnect()
                 server.connections.remove(address)
                 status = RakStatus.Disconnected
             }
