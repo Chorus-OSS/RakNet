@@ -49,9 +49,7 @@ class RakServer private constructor(
     var message: String? = null
 
     fun start() {
-        if (alive) {
-            throw IllegalStateException("Server is already running!")
-        }
+        if (alive) return
 
         alive = true
 
@@ -175,7 +173,7 @@ class RakServer private constructor(
                 val reply = OpenConnectionReply2(
                     guid = this.guid,
                     magic = Magic.MagicBytes,
-                    address = Address(datagram.address as InetSocketAddress),
+                    address = Address.from(datagram.address as InetSocketAddress),
                     mtu = packet.mtu,
                     encryption = false
                 )

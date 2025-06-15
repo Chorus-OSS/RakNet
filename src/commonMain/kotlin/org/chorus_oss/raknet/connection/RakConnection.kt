@@ -411,7 +411,7 @@ open class RakConnection(
         val request = ConnectionRequest.deserialize(stream)
 
         val accepted = ConnectionRequestAccepted(
-            clientAddress = Address(address as InetSocketAddress),
+            clientAddress = Address.from(address as InetSocketAddress),
             systemIndex = 0u,
             systemAddress = emptyList(),
             requestTimestamp = request.clientTimestamp,

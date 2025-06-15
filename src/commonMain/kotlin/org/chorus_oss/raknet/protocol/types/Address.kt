@@ -1,83 +1,90 @@
 package org.chorus_oss.raknet.protocol.types
 
-import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.sockets.*
 import kotlinx.io.*
 import org.chorus_oss.raknet.protocol.RakCodec
 
 data class Address(
-    val hostname: String,
-    val port: Int,
-    val version: UByte,
+    val address: ByteArray,
+    val port: Int
 ) {
-    constructor(socketAddress: InetSocketAddress) : this(
-        hostname = socketAddress.hostname,
-        port = socketAddress.port,
-        version = when {
-            socketAddress.hostname.contains(".") -> 4u
-            socketAddress.hostname.contains(":") -> 6u
-            else -> {
-                log.error { "Invalid socketAddress: $socketAddress" }
-                0u
-            }
-        }
-    )
+    init {
+        require(address.size == 4 || address.size == 16) { "Address must have 4 bytes for IPv4 or 16 bytes for IPv6" }
+    }
+
+    val isIPv6: Boolean = address.size == 16
+    val version: UByte = if (isIPv6) 6u else 4u
 
     companion object : RakCodec<Address> {
-        private val log = KotlinLogging.logger {}
+        fun from(socketAddress: InetSocketAddress): Address {
+            val resolvedAddress = requireNotNull(socketAddress.resolveAddress()) {
+                "Address could not be resolved for $socketAddress"
+            }
+
+            return Address(
+                address = resolvedAddress,
+                port = socketAddress.port
+            )
+        }
 
         override fun serialize(value: Address, stream: Sink) {
             stream.writeUByte(value.version)
 
-            when (value.version) {
-                4u.toUByte() -> {
-                    val bits = value.hostname.split(".", limit = 4)
-                    for (bit in bits) {
-                        stream.writeUByte(bit.toUByte())
-                    }
+            when (value.isIPv6) {
+                false -> {
+                    stream.write(value.address)
                     stream.writeUShort(value.port.toUShort())
                 }
 
-                6u.toUByte() -> {
+                true -> {
                     stream.writeUShort(23u)
                     stream.writeUShort(value.port.toUShort())
                     stream.writeUInt(0u)
-                    val parts = value.hostname.split(":")
-                    for (part in parts) {
-                        stream.writeUShort(part.toUShort(16))
-                    }
+                    stream.write(value.address)
                     stream.writeUInt(0u)
                 }
-
-                else -> log.error { "Unexpected version: ${value.version}" }
             }
         }
 
         override fun deserialize(stream: Source): Address {
             return when (val version = stream.readUByte()) {
                 4u.toUByte() -> {
-                    val bytes = stream.readByteArray(4)
-                    val address = bytes.joinToString { it.toString() }
+                    val address = stream.readByteArray(4)
                     val port = stream.readUShort().toInt()
-                    Address(address, port, version)
+                    Address(address, port)
                 }
 
                 6u.toUByte() -> {
                     stream.skip(2)
                     val port = stream.readUShort().toInt()
                     stream.skip(4)
-                    val address = List(8) {
-                        stream.readUShort().toString(16).padStart(4, '0')
-                    }.joinToString(separator = ":")
+                    val address = stream.readByteArray(16)
                     stream.skip(4)
-                    Address(address, port, version)
+                    Address(address, port)
                 }
 
-                else -> {
-                    log.error { "Unexpected version: $version" }
-                    Address("", 0, 0u)
-                }
+                else -> throw IllegalArgumentException("Unexpected version: $version")
             }
         }
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null || this::class != other::class) return false
+
+        other as Address
+
+        if (port != other.port) return false
+        if (!address.contentEquals(other.address)) return false
+        if (isIPv6 != other.isIPv6) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = port
+        result = 31 * result + address.contentHashCode()
+        result = 31 * result + isIPv6.hashCode()
+        return result
     }
 }

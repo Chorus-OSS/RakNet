@@ -9,7 +9,7 @@ object SystemAddress : RakCodec<List<Address>> {
         for (i in 0 until 20) {
             Address.serialize(
                 value.getOrElse(i) {
-                    Address("0.0.0.0", 0, 4u)
+                    Address(byteArrayOf(0, 0, 0, 0), 0)
                 },
                 stream
             )
