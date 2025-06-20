@@ -3,9 +3,9 @@ import com.vanniktech.maven.publish.KotlinMultiplatform
 import com.vanniktech.maven.publish.SonatypeHost
 
 plugins {
-    kotlin("multiplatform") version "2.1.10"
-    id("org.jetbrains.dokka") version "2.0.0"
-    id("com.vanniktech.maven.publish") version "0.32.0"
+    alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.dokka)
+    alias(libs.plugins.maven.publish)
 }
 
 description = "RakNet library for Kotlin Multiplatform"
@@ -34,7 +34,11 @@ kotlin {
             }
         }
 
-        val commonTest by getting
+        val commonTest by getting {
+            dependencies {
+                implementation(libs.kotlin.test)
+            }
+        }
 
         jvmMain {
             dependencies {
@@ -91,8 +95,5 @@ kotlin {
                 androidVariantsToPublish = emptyList(),
             )
         )
-    }
-    sourceSets.commonTest.dependencies {
-        implementation(kotlin("test"))
     }
 }
