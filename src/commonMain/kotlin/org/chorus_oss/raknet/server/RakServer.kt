@@ -4,8 +4,11 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.io.Buffer
+import kotlinx.io.bytestring.decodeToString
 import kotlinx.io.readUByte
+import org.chorus_oss.raknet.config.RakServerConfig
 import org.chorus_oss.raknet.connection.RakConnection
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
@@ -15,68 +18,85 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.random.nextULong
 
-class RakServer private constructor(
-    private val socket: BoundDatagramSocket,
+class RakServer(
+    val host: String,
+    val port: Int,
+    val config: RakServerConfig,
     private val connectionFactory: RakConnectionFactory
 ) : CoroutineScope {
-    override val coroutineContext: CoroutineContext
-        get() = Dispatchers.IO + SupervisorJob() + CoroutineName("RakNetServer")
+    override val coroutineContext: CoroutineContext = Dispatchers.IO + SupervisorJob() + CoroutineName("RakNetServer")
 
     val connections: MutableMap<SocketAddress, RakConnection> = mutableMapOf()
 
-    private var alive: Boolean = false
+    val sendQueue: MutableList<Datagram> = mutableListOf()
 
-    private var guid = Random.nextULong()
+    private val startupJob: CompletableDeferred<Unit> = CompletableDeferred()
+    private val stopRequest: CompletableJob = Job()
 
-    var maxMtuSize: UShort = Rak.MAX_MTU_SIZE
-    var minMtuSize: UShort = Rak.MIN_MTU_SIZE
-    var maxConnections: Int = 10
+    private val serverJob: Job = initServerJob()
 
-    var motd: RakMOTD = RakMOTD(
-        edition = "MCPE",
-        name = "Chorus/RakNet",
-        protocol = 0,
-        version = "1.0.0",
-        playerCount = this.connections.size,
-        playerMax = maxConnections,
-        guid = guid,
-        subName = "chorus-oss.org",
-        gamemode = "Survival",
-        nintendoLimited = false,
-        port = socket.localAddress.port()
-    )
+    suspend fun startSuspend(wait: Boolean = false): RakServer {
+        serverJob.start()
+        startupJob.await()
 
-    var message: String? = null
+        if (wait) {
+            serverJob.join()
+        }
+        return this
+    }
 
-    fun start() {
-        if (alive) return
+    fun start(wait: Boolean = false): RakServer = runBlocking { startSuspend(wait) }
 
-        alive = true
+    suspend fun stopSuspend(gracePeriod: Long = 500, timeout: Long = 500) {
+        stopRequest.complete()
 
-        launch {
-            while (alive) {
-                handle(socket.receive())
+        val result = withTimeoutOrNull(gracePeriod) {
+            serverJob.join()
+            true
+        }
 
-                for (conn in connections.values) {
-                    conn.tick()
-                }
+        if (result == null) {
+            serverJob.cancel()
+
+            withTimeoutOrNull(gracePeriod - timeout) {
+                serverJob.join()
             }
         }
     }
 
-    fun stop() {
-        alive = false
+    fun stop(gracePeriod: Long = 500, timeout: Long = 500) = runBlocking { stopSuspend(gracePeriod, timeout) }
 
-        socket.close()
+    private fun initServerJob(): Job {
+        return launch(start = CoroutineStart.LAZY) {
+            val socket = aSocket(selector).udp().bind(host, port)
 
-        this.cancel()
+            val acceptJob = launch {
+                while (true) {
+                    handle(socket.receive())
+
+                    for (gram in sendQueue) {
+                        socket.send(gram)
+                    }
+                    sendQueue.clear()
+
+                    for (conn in connections.values) {
+                        conn.tick()
+                    }
+                }
+            }
+
+            startupJob.complete(Unit)
+            stopRequest.join()
+
+            acceptJob.cancel()
+        }
     }
 
-    suspend fun send(data: Datagram) {
-        socket.send(data)
+    fun send(data: Datagram) {
+        sendQueue.add(data)
     }
 
-    private suspend fun handle(datagram: Datagram) {
+    private fun handle(datagram: Datagram) {
         val header = datagram.packet.peek().readUByte()
 
         val offline = header and RakHeader.VALID == 0u.toUByte()
@@ -89,21 +109,16 @@ class RakServer private constructor(
         }
     }
 
-    private suspend fun handleOffline(datagram: Datagram) {
+    private fun handleOffline(datagram: Datagram) {
         when (val header = datagram.packet.peek().readUByte()) {
             RakPacketID.UNCONNECTED_PING -> {
                 val packet = UnconnectedPing.deserialize(datagram.packet)
 
                 val pong = UnconnectedPong(
                     timestamp = packet.timestamp,
-                    guid = guid,
-                    magic = Magic.MagicBytes,
-                    message = message ?: motd.copy(
-                        playerCount = connections.size,
-                        playerMax = maxConnections,
-                        port = socket.localAddress.port(),
-                        guid = guid,
-                    ).toString()
+                    guid = config.guid,
+                    magic = config.magic,
+                    message = config.advertisement
                 )
 
                 return this.send(
@@ -119,14 +134,14 @@ class RakServer private constructor(
             RakPacketID.OPEN_CONNECTION_REQUEST_1 -> {
                 val packet = OpenConnectionRequest1.deserialize(datagram.packet)
 
-                if (packet.protocol != Rak.PROTOCOL) {
+                if (packet.protocol != RakConstants.PROTOCOL) {
                     val incompatible = IncompatibleProtocol(
-                        protocol = Rak.PROTOCOL,
-                        guid = this.guid,
-                        magic = Magic.MagicBytes,
+                        protocol = RakConstants.PROTOCOL,
+                        guid = config.guid,
+                        magic = config.magic,
                     )
 
-                    log.warn { "Refusing connection from ${datagram.address} due to incompatible protocol version v${packet.protocol}, expected v${Rak.PROTOCOL}." }
+                    log.warn { "Refusing connection from ${datagram.address} due to incompatible protocol version v${packet.protocol}, expected v${RakConstants.PROTOCOL}." }
 
                     return this.send(
                         Datagram(
@@ -139,10 +154,10 @@ class RakServer private constructor(
                 }
 
                 val reply = OpenConnectionReply1(
-                    guid = this.guid,
-                    magic = Magic.MagicBytes,
+                    guid = config.guid,
+                    magic = config.magic,
                     security = false,
-                    mtu = (packet.mtu + Rak.UDP_HEADER_SIZE).toUShort().coerceAtMost(this.maxMtuSize)
+                    mtu = (packet.mtu + RakConstants.UDP_HEADER_SIZE).toUShort().coerceAtMost(config.maxMTUSize)
                 )
 
                 return this.send(
@@ -158,11 +173,11 @@ class RakServer private constructor(
             RakPacketID.OPEN_CONNECTION_REQUEST_2 -> {
                 val packet = OpenConnectionRequest2.deserialize(datagram.packet)
 
-                if (packet.address.port != this.socket.localAddress.port()) {
+                if (packet.address.port != this.port) {
                     return log.warn { "Refusing connection from ${datagram.address} due to mismatched port." }
                 }
 
-                if (packet.mtu !in this.minMtuSize..this.maxMtuSize) {
+                if (packet.mtu !in config.minMTUSize..config.maxMTUSize) {
                     return log.warn { "Refusing connection from ${datagram.address} due to invalid mtu size." }
                 }
 
@@ -171,8 +186,8 @@ class RakServer private constructor(
                 }
 
                 val reply = OpenConnectionReply2(
-                    guid = this.guid,
-                    magic = Magic.MagicBytes,
+                    guid = config.guid,
+                    magic = config.magic,
                     address = Address.from(datagram.address as InetSocketAddress),
                     mtu = packet.mtu,
                     encryption = false
@@ -205,17 +220,5 @@ class RakServer private constructor(
         private val selector: SelectorManager = SelectorManager(Dispatchers.IO + CoroutineName("RakNetServer - SelectorManager"))
 
         private val log = KotlinLogging.logger {}
-
-        suspend fun create(hostname: String, port: Int, connectionFactory: RakConnectionFactory = RakConnectionFactory()): RakServer {
-            return create(InetSocketAddress(hostname, port), connectionFactory)
-        }
-
-        suspend fun create(address: SocketAddress, connectionFactory: RakConnectionFactory = RakConnectionFactory()): RakServer {
-            val socket = aSocket(selector)
-                .udp()
-                .bind(address)
-
-            return RakServer(socket, connectionFactory)
-        }
     }
 }

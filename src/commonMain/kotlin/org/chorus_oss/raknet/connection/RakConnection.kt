@@ -57,7 +57,7 @@ open class RakConnection(
 
     open fun onError(error: Error) {}
 
-    suspend fun tick() {
+    fun tick() {
         if (lastUpdate.plus(15000.toDuration(DurationUnit.MILLISECONDS)) < Clock.System.now()) {
             log.warn { "Detected stale connection from $address, disconnecting..." }
 
@@ -105,7 +105,7 @@ open class RakConnection(
         this.sendQueue(outputFrames.size)
     }
 
-    suspend fun disconnect() {
+    fun disconnect() {
         status = RakStatus.Disconnecting
 
         val disconnect = Disconnect()
@@ -126,7 +126,7 @@ open class RakConnection(
         status = RakStatus.Disconnected
     }
 
-    suspend fun incoming(stream: Source) {
+    fun incoming(stream: Source) {
         lastUpdate = Clock.System.now()
 
         val header = stream.peek().readUByte() and 0xF0.toUByte()
@@ -146,7 +146,7 @@ open class RakConnection(
         }
     }
 
-    private suspend fun incomingBatch(stream: Source) {
+    private fun incomingBatch(stream: Source) {
         val header = stream.peek().readUByte()
 
         if (status == RakStatus.Connecting) {
@@ -216,7 +216,7 @@ open class RakConnection(
         }
     }
 
-    private suspend fun nack(stream: Source) {
+    private fun nack(stream: Source) {
         val nack = NAck.deserialize(stream)
 
         for (sequence in nack.sequences) {
@@ -227,7 +227,7 @@ open class RakConnection(
         }
     }
 
-    private suspend fun handleIncomingFrameSet(stream: Source) {
+    private fun handleIncomingFrameSet(stream: Source) {
         val frameSet = FrameSet.deserialize(stream)
 
         if (receivedFrameSequences.contains(frameSet.sequence)) {
@@ -259,7 +259,7 @@ open class RakConnection(
         }
     }
 
-    private suspend fun handleFrame(frame: Frame) {
+    private fun handleFrame(frame: Frame) {
         if (frame.isSplit) return handleFragment(frame)
 
         if (frame.reliability.isSequenced) {
@@ -308,7 +308,7 @@ open class RakConnection(
         }
     }
 
-    private suspend fun handleFragment(frame: Frame) {
+    private fun handleFragment(frame: Frame) {
         if (fragmentsQueue.contains(frame.splitID)) {
             val fragment = fragmentsQueue[frame.splitID] ?: return
 
@@ -332,7 +332,7 @@ open class RakConnection(
         }
     }
 
-    suspend fun sendFrame(frame: Frame, priority: RakPriority) {
+    fun sendFrame(frame: Frame, priority: RakPriority) {
         if (frame.reliability.isSequenced) {
             frame.orderIndex = outputOrderIndex[frame.orderChannel.toInt()]
             frame.sequenceIndex = outputSequenceIndex[frame.orderChannel.toInt()]++
@@ -367,14 +367,14 @@ open class RakConnection(
         }
     }
 
-    private suspend fun queueFrame(frame: Frame, priority: RakPriority) {
-        var length = Rak.DGRAM_HEADER_SIZE.toLong()
+    private fun queueFrame(frame: Frame, priority: RakPriority) {
+        var length = RakConstants.DGRAM_HEADER_SIZE.toLong()
 
         for (f in outputFrames) {
             length += f.byteLength
         }
 
-        if (length + frame.byteLength > (mtu - Rak.DGRAM_MTU_OVERHEAD).toLong()) {
+        if (length + frame.byteLength > (mtu - RakConstants.DGRAM_MTU_OVERHEAD).toLong()) {
             sendQueue(outputFrames.size)
         }
 
@@ -383,7 +383,7 @@ open class RakConnection(
         if (priority == RakPriority.Immediate) sendQueue(1)
     }
 
-    suspend fun sendQueue(amount: Int) {
+    fun sendQueue(amount: Int) {
         if (outputFrames.isEmpty()) return
 
         val frameSet = FrameSet(
@@ -407,7 +407,7 @@ open class RakConnection(
         )
     }
 
-    private suspend fun handleIncomingConnectionRequest(stream: Source) {
+    private fun handleIncomingConnectionRequest(stream: Source) {
         val request = ConnectionRequest.deserialize(stream)
 
         val accepted = ConnectionRequestAccepted(
@@ -429,7 +429,7 @@ open class RakConnection(
         sendFrame(frame, RakPriority.Normal)
     }
 
-    private suspend fun handleIncomingConnectedPing(stream: Source) {
+    private fun handleIncomingConnectedPing(stream: Source) {
         val ping = ConnectedPing.deserialize(stream)
 
         val pong = ConnectedPong(

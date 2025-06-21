@@ -1,12 +1,13 @@
 package org.chorus_oss.raknet.protocol.packets
 
 import kotlinx.io.*
+import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakPacketCodec
 import org.chorus_oss.raknet.protocol.types.Magic
 import org.chorus_oss.raknet.types.RakPacketID
 
 data class OpenConnectionReply1(
-    val magic: List<UByte>,
+    val magic: ByteString,
     val guid: ULong,
     val security: Boolean,
     val mtu: UShort

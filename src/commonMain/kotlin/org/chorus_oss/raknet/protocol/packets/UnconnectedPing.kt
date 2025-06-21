@@ -1,13 +1,14 @@
 package org.chorus_oss.raknet.protocol.packets
 
 import kotlinx.io.*
+import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakPacketCodec
 import org.chorus_oss.raknet.protocol.types.Magic
 import org.chorus_oss.raknet.types.RakPacketID
 
 data class UnconnectedPing(
     val timestamp: ULong,
-    val magic: List<UByte>,
+    val magic: ByteString,
     val client: ULong
 ) {
     companion object : RakPacketCodec<UnconnectedPing> {
