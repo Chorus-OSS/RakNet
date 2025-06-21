@@ -11,7 +11,7 @@ class RakServerConfig {
     var protocols: List<UByte> = listOf(RakConstants.PROTOCOL)
     var maxConnections: Int = 10
     var magic: ByteString = RakConstants.MAGIC
-    var advertisement: ByteString = ByteString()
+    var message: ByteString = ByteString()
     var maxMTUSize: UShort = RakConstants.MAX_MTU_SIZE
     var minMTUSize: UShort = RakConstants.MIN_MTU_SIZE
     var packetLimit: Int = RakConstants.PACKET_LIMIT

@@ -4,19 +4,14 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
 import kotlinx.io.Buffer
-import kotlinx.io.bytestring.decodeToString
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.config.RakServerConfig
 import org.chorus_oss.raknet.connection.RakConnection
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
-import org.chorus_oss.raknet.protocol.types.Magic
 import org.chorus_oss.raknet.types.*
 import kotlin.coroutines.CoroutineContext
-import kotlin.random.Random
-import kotlin.random.nextULong
 
 class RakServer(
     val host: String,
@@ -118,7 +113,7 @@ class RakServer(
                     timestamp = packet.timestamp,
                     guid = config.guid,
                     magic = config.magic,
-                    message = config.advertisement
+                    message = config.message
                 )
 
                 return this.send(

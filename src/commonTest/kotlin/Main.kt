@@ -1,6 +1,5 @@
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.sockets.*
-import kotlinx.coroutines.runBlocking
 import kotlinx.io.Source
 import kotlinx.io.bytestring.encodeToByteString
 import kotlinx.io.readByteArray
@@ -17,7 +16,7 @@ class Main {
     @Test
     fun main() {
         rakServer = rakServer("0.0.0.0", 19132, ConnectionFactory()) {
-            advertisement = RakMOTD(
+            message = RakMOTD(
                 edition = "MCPE",
                 name = "Chorus/RakNet",
                 protocol = 0,
