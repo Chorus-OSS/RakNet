@@ -22,11 +22,11 @@ class RakServerConfig {
     var onConnect: (RakConnection) -> Unit = {}
     var onDisconnect: (RakConnection) -> Unit = {}
 
-    fun onConnect(onConnect: (RakConnection) -> Unit) {
-        this.onConnect = onConnect
+    fun onConnect(fn: (RakConnection) -> Unit) {
+        this.onConnect = fn
     }
 
-    fun onDisconnect(onDisconnect: (RakConnection) -> Unit) {
-        this.onDisconnect = onDisconnect
+    fun onDisconnect(fn: (RakConnection) -> Unit) {
+        this.onDisconnect = fn
     }
 }

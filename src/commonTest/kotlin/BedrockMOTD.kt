@@ -1,6 +1,7 @@
-package org.chorus_oss.raknet.types
+import kotlinx.io.bytestring.ByteString
+import kotlinx.io.bytestring.encodeToByteString
 
-data class RakMOTD(
+data class BedrockMOTD(
     var edition: String = "MCPE",
     var name: String,
     var protocol: Int,
@@ -15,7 +16,7 @@ data class RakMOTD(
     var portV6: Int? = null,
 ) {
     override fun toString(): String {
-        val list = mutableListOf(
+        return listOfNotNull(
             edition,
             name,
             protocol,
@@ -26,16 +27,12 @@ data class RakMOTD(
             subName,
             gamemode,
             if (nintendoLimited) 0 else 1,
-        )
+            port?.toString(),
+            portV6?.toString(),
+        ).joinToString(separator = ";", postfix = ";")
+    }
 
-        if (port != null) {
-            list.add(port.toString())
-        }
-
-        if (portV6 != null) {
-            list.add(portV6.toString())
-        }
-
-        return list.joinToString(separator = ";", postfix = ";")
+    fun toByteString(): ByteString {
+        return this.toString().encodeToByteString()
     }
 }

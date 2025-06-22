@@ -3,7 +3,6 @@ import kotlinx.io.bytestring.encodeToByteString
 import kotlinx.io.readByteArray
 import org.chorus_oss.raknet.rakServer
 import org.chorus_oss.raknet.server.RakServer
-import org.chorus_oss.raknet.types.RakMOTD
 import kotlin.test.Test
 
 @OptIn(ExperimentalStdlibApi::class)
@@ -13,19 +12,18 @@ class Main {
     @Test
     fun main() {
         rakServer = rakServer("0.0.0.0", 19132) {
-            message = RakMOTD(
-                edition = "MCPE",
-                name = "Chorus/RakNet",
+            message = BedrockMOTD(
+                name = "chorus-oss.org",
                 protocol = 0,
                 version = "1.0.0",
                 playerCount = 0,
-                playerMax = maxConnections,
+                playerMax = -1,
                 guid = guid,
-                subName = "chorus-oss.org",
-                gamemode = "Survival",
-                nintendoLimited = false,
-                port = 19132
-            ).toString().encodeToByteString()
+                subName = "RakNet",
+                gamemode = "Adventure"
+            ).also {
+                log.info { "Using BedrockMOTD: $it" }
+            }.toByteString()
 
             onConnect { connection ->
                 log.info { "Connected on ${connection.address}, with guid: ${connection.guid}" }
