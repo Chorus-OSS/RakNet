@@ -3,6 +3,10 @@ package org.chorus_oss.raknet.connection
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.sockets.*
 import io.ktor.utils.io.core.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.io.Buffer
@@ -16,8 +20,7 @@ import org.chorus_oss.raknet.protocol.types.UMedium
 import org.chorus_oss.raknet.server.RakServer
 import org.chorus_oss.raknet.types.*
 import kotlin.math.ceil
-import kotlin.time.DurationUnit
-import kotlin.time.toDuration
+import kotlin.time.Duration.Companion.milliseconds
 
 class RakConnection(
     val server: RakServer,
@@ -28,19 +31,21 @@ class RakConnection(
     private var status: RakStatus = RakStatus.Connecting
     private var lastUpdate: Instant = Clock.System.now()
 
+    private val outbound: Channel<Datagram> = Channel(Channel.UNLIMITED)
+
     private val receivedFrameSequences = mutableSetOf<UInt>()
     private val lostFrameSequences = mutableSetOf<UInt>()
-    private val inputHighestSequenceIndex = MutableList<UInt>(32) { 0u }
+    private val inputHighestSequenceIndex = MutableList(32) { 0u }
     private val fragmentsQueue = mutableMapOf<UShort, MutableMap<UInt, Frame>>()
 
-    private val inputOrderIndex = MutableList<UMedium>(32) { 0u }
+    private val inputOrderIndex = MutableList(32) { 0u }
     private val inputOrderingQueue = mutableMapOf<UByte, MutableMap<UMedium, Frame>>(
         *(Array(32) { Pair(0u.toUByte(), mutableMapOf()) }),
     )
     private var lastInputSequence: UInt? = null;
 
-    private val outputOrderIndex = MutableList<UMedium>(32) { 0u }
-    private val outputSequenceIndex = MutableList<UMedium>(32) { 0u }
+    private val outputOrderIndex = MutableList(32) { 0u }
+    private val outputSequenceIndex = MutableList(32) { 0u }
 
     private val outputFrames = mutableSetOf<Frame>()
     private val outputBackup = mutableMapOf<UInt, List<Frame>>()
@@ -62,8 +67,24 @@ class RakConnection(
         return this
     }
 
+    init {
+        server.launch {
+            while(isActive) {
+                tick()
+                delay(10)
+            }
+        }
+    }
+
+    fun flush() {
+        while (true) {
+            val out = outbound.tryReceive().getOrNull() ?: break
+            server.outbound.trySend(out)
+        }
+    }
+
     fun tick() {
-        if (lastUpdate.plus(15000.toDuration(DurationUnit.MILLISECONDS)) < Clock.System.now()) {
+        if (lastUpdate.plus(15000.milliseconds) < Clock.System.now()) {
             log.warn { "Detected stale connection from $address, disconnecting..." }
 
             return disconnect()
@@ -80,7 +101,7 @@ class RakConnection(
 
             receivedFrameSequences.clear()
 
-            server.send(
+            outbound.trySend(
                 Datagram(
                     packet = Buffer().also {
                         Ack.serialize(ack, it)
@@ -97,7 +118,7 @@ class RakConnection(
 
             lostFrameSequences.clear()
 
-            server.send(
+            outbound.trySend(
                 Datagram(
                     packet = Buffer().also {
                         NAck.serialize(nack, it)
@@ -108,6 +129,8 @@ class RakConnection(
         }
 
         this.sendQueue(outputFrames.size)
+
+        flush()
     }
 
     fun disconnect() {
@@ -385,7 +408,10 @@ class RakConnection(
 
         outputFrames.add(frame)
 
-        if (priority == RakPriority.Immediate) sendQueue(1)
+        if (priority == RakPriority.Immediate) {
+            sendQueue(1)
+            flush()
+        }
     }
 
     fun sendQueue(amount: Int) {
@@ -402,7 +428,7 @@ class RakConnection(
             outputFrames.remove(frame)
         }
 
-        server.send(
+        outbound.trySend(
             Datagram(
                 packet = Buffer().also {
                     FrameSet.serialize(frameSet, it)

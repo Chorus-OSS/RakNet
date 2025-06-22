@@ -4,6 +4,8 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.SendChannel
 import kotlinx.io.Buffer
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.config.RakServerConfig
@@ -22,7 +24,10 @@ class RakServer(
 
     val connections: MutableMap<SocketAddress, RakConnection> = mutableMapOf()
 
-    private val sendQueue: MutableList<Datagram> = mutableListOf()
+    private val _outbound: Channel<Datagram> = Channel(Channel.UNLIMITED)
+
+    val outbound: SendChannel<Datagram>
+        get() = _outbound
 
     private val startup: CompletableDeferred<Unit> = CompletableDeferred()
     private val stop: CompletableJob = Job()
@@ -65,17 +70,14 @@ class RakServer(
             val socket = aSocket(selector).udp().bind(host, port)
 
             val acceptJob = launch {
-                while (true) {
+                while (isActive) {
                     handle(socket.receive())
+                }
+            }
 
-                    for (gram in sendQueue) {
-                        socket.send(gram)
-                    }
-                    sendQueue.clear()
-
-                    for (conn in connections.values) {
-                        conn.tick()
-                    }
+            val sendJob = launch {
+                for (data in _outbound) {
+                    socket.send(data)
                 }
             }
 
@@ -83,11 +85,8 @@ class RakServer(
             stop.join()
 
             acceptJob.cancel()
+            sendJob.cancel()
         }
-    }
-
-    fun send(data: Datagram) {
-        sendQueue.add(data)
     }
 
     private fun handle(datagram: Datagram) {
@@ -115,7 +114,7 @@ class RakServer(
                     message = config.message
                 )
 
-                return this.send(
+                outbound.trySend(
                     Datagram(
                         packet = Buffer().also {
                             UnconnectedPong.serialize(pong, it)
@@ -123,6 +122,7 @@ class RakServer(
                         address = datagram.address
                     )
                 )
+                return
             }
 
             RakPacketID.OPEN_CONNECTION_REQUEST_1 -> {
@@ -137,7 +137,7 @@ class RakServer(
 
                     log.warn { "Refusing connection from ${datagram.address} due to incompatible protocol version v${packet.protocol}, expected v${RakConstants.PROTOCOL}." }
 
-                    return this.send(
+                    outbound.trySend(
                         Datagram(
                             packet = Buffer().also {
                                 IncompatibleProtocol.serialize(incompatible, it)
@@ -145,6 +145,7 @@ class RakServer(
                             address = datagram.address
                         )
                     )
+                    return
                 }
 
                 val reply = OpenConnectionReply1(
@@ -154,7 +155,7 @@ class RakServer(
                     mtu = (packet.mtu + RakConstants.UDP_HEADER_SIZE).toUShort().coerceAtMost(config.maxMTUSize)
                 )
 
-                return this.send(
+                outbound.trySend(
                     Datagram(
                         packet = Buffer().also {
                             OpenConnectionReply1.serialize(reply, it)
@@ -162,6 +163,7 @@ class RakServer(
                         address = datagram.address
                     )
                 )
+                return
             }
 
             RakPacketID.OPEN_CONNECTION_REQUEST_2 -> {
@@ -191,7 +193,7 @@ class RakServer(
 
                 this.connections[datagram.address] = RakConnection(this, datagram.address, packet.client, packet.mtu)
 
-                this.send(
+                outbound.trySend(
                     Datagram(
                         packet = Buffer().also {
                             OpenConnectionReply2.serialize(reply, it)
