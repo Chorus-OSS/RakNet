@@ -1,6 +1,7 @@
 package org.chorus_oss.raknet.config
 
 import kotlinx.io.bytestring.ByteString
+import org.chorus_oss.raknet.connection.RakConnection
 import org.chorus_oss.raknet.types.RakConstants
 import kotlin.random.Random
 import kotlin.random.nextULong
@@ -17,4 +18,15 @@ class RakServerConfig {
     var packetLimit: Int = RakConstants.PACKET_LIMIT
     var totalPacketLimit: Int = RakConstants.TOTAL_PACKET_LIMIT
     var security: Boolean = false
+
+    var onConnect: (RakConnection) -> Unit = {}
+    var onDisconnect: (RakConnection) -> Unit = {}
+
+    fun onConnect(onConnect: (RakConnection) -> Unit) {
+        this.onConnect = onConnect
+    }
+
+    fun onDisconnect(onDisconnect: (RakConnection) -> Unit) {
+        this.onDisconnect = onDisconnect
+    }
 }

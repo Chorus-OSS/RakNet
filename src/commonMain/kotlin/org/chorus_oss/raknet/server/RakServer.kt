@@ -16,23 +16,22 @@ import kotlin.coroutines.CoroutineContext
 class RakServer(
     val host: String,
     val port: Int,
-    val config: RakServerConfig,
-    private val connectionFactory: RakConnectionFactory
+    val config: RakServerConfig
 ) : CoroutineScope {
     override val coroutineContext: CoroutineContext = Dispatchers.IO + SupervisorJob() + CoroutineName("RakNetServer")
 
     val connections: MutableMap<SocketAddress, RakConnection> = mutableMapOf()
 
-    val sendQueue: MutableList<Datagram> = mutableListOf()
+    private val sendQueue: MutableList<Datagram> = mutableListOf()
 
-    private val startupJob: CompletableDeferred<Unit> = CompletableDeferred()
-    private val stopRequest: CompletableJob = Job()
+    private val startup: CompletableDeferred<Unit> = CompletableDeferred()
+    private val stop: CompletableJob = Job()
 
     private val serverJob: Job = initServerJob()
 
     suspend fun startSuspend(wait: Boolean = false): RakServer {
         serverJob.start()
-        startupJob.await()
+        startup.await()
 
         if (wait) {
             serverJob.join()
@@ -43,7 +42,7 @@ class RakServer(
     fun start(wait: Boolean = false): RakServer = runBlocking { startSuspend(wait) }
 
     suspend fun stopSuspend(gracePeriod: Long = 500, timeout: Long = 500) {
-        stopRequest.complete()
+        stop.complete()
 
         val result = withTimeoutOrNull(gracePeriod) {
             serverJob.join()
@@ -80,8 +79,8 @@ class RakServer(
                 }
             }
 
-            startupJob.complete(Unit)
-            stopRequest.join()
+            startup.complete(Unit)
+            stop.join()
 
             acceptJob.cancel()
         }
@@ -190,7 +189,7 @@ class RakServer(
 
                 log.info { "Establishing connection from ${datagram.address} with mtu size of ${packet.mtu}." }
 
-                this.connections[datagram.address] = connectionFactory.create(this, datagram.address, packet.client, packet.mtu)
+                this.connections[datagram.address] = RakConnection(this, datagram.address, packet.client, packet.mtu)
 
                 this.send(
                     Datagram(

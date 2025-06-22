@@ -7,10 +7,9 @@ import org.chorus_oss.raknet.types.RakConnectionFactory
 fun rakServer(
     host: String = "0.0.0.0",
     port: Int = 19132,
-    connectionFactory: RakConnectionFactory = RakConnectionFactory(),
     config: RakServerConfig.() -> Unit = {}
 ): RakServer {
     val config = RakServerConfig().apply(config)
 
-    return RakServer(host, port, config, connectionFactory)
+    return RakServer(host, port, config)
 }

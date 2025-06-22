@@ -19,7 +19,7 @@ import kotlin.math.ceil
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
 
-open class RakConnection(
+class RakConnection(
     val server: RakServer,
     val address: SocketAddress,
     val guid: ULong,
@@ -49,13 +49,18 @@ open class RakConnection(
     private var outputSplitIndex: UInt = 0u
     private var outputReliableIndex: UMedium = 0u
 
-    open fun onConnect() {}
+    var onPacket: (Source) -> Unit = {}
+    var onError: (Error) -> Unit = {}
 
-    open fun onDisconnect() {}
+    fun onPacket(onPacket: (Source) -> Unit): RakConnection {
+        this.onPacket = onPacket
+        return this
+    }
 
-    open fun onPacket(stream: Source) {}
-
-    open fun onError(error: Error) {}
+    fun onError(onError: (Error) -> Unit): RakConnection {
+        this.onError = onError
+        return this
+    }
 
     fun tick() {
         if (lastUpdate.plus(15000.toDuration(DurationUnit.MILLISECONDS)) < Clock.System.now()) {
@@ -120,7 +125,7 @@ open class RakConnection(
 
         sendFrame(frame, RakPriority.Immediate)
 
-        onDisconnect()
+        server.config.onDisconnect(this)
         server.connections.remove(address)
 
         status = RakStatus.Disconnected
@@ -163,7 +168,7 @@ open class RakConnection(
 
                 RakPacketID.NEW_INCOMING_CONNECTION -> {
                     status = RakStatus.Connected
-                    onConnect()
+                    server.config.onConnect(this)
                 }
 
                 else -> {
@@ -181,7 +186,7 @@ open class RakConnection(
         when (header) {
             RakPacketID.DISCONNECT -> {
                 status = RakStatus.Disconnecting
-                onDisconnect()
+                server.config.onDisconnect(this)
                 server.connections.remove(address)
                 status = RakStatus.Disconnected
             }
