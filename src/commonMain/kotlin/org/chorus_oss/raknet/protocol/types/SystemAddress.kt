@@ -2,6 +2,7 @@ package org.chorus_oss.raknet.protocol.types
 
 import kotlinx.io.Sink
 import kotlinx.io.Source
+import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakCodec
 
 object SystemAddress : RakCodec<List<Address>> {
@@ -9,7 +10,7 @@ object SystemAddress : RakCodec<List<Address>> {
         for (i in 0 until 20) {
             Address.serialize(
                 value.getOrElse(i) {
-                    Address(byteArrayOf(0, 0, 0, 0), 0)
+                    Address(ByteString(0, 0, 0, 0), 0)
                 },
                 stream
             )

@@ -17,7 +17,6 @@ import kotlinx.io.readUByte
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.protocol.types.Frame
-import org.chorus_oss.raknet.protocol.types.UMedium
 import org.chorus_oss.raknet.server.RakServer
 import org.chorus_oss.raknet.types.*
 import kotlin.math.ceil
@@ -40,7 +39,7 @@ class RakConnection(
     private val fragmentsQueue = mutableMapOf<UShort, MutableMap<UInt, Frame>>()
 
     private val inputOrderIndex = MutableList(32) { 0u }
-    private val inputOrderingQueue = mutableMapOf<UByte, MutableMap<UMedium, Frame>>(
+    private val inputOrderingQueue = mutableMapOf<UByte, MutableMap<UInt, Frame>>(
         *(Array(32) { Pair(0u.toUByte(), mutableMapOf()) }),
     )
     private var lastInputSequence: UInt? = null;
@@ -53,7 +52,7 @@ class RakConnection(
 
     private var outputSequence: UInt = 0u
     private var outputSplitIndex: UInt = 0u
-    private var outputReliableIndex: UMedium = 0u
+    private var outputReliableIndex: UInt = 0u
 
     var onPacket: (Source) -> Unit = {}
     var onError: (Error) -> Unit = {}

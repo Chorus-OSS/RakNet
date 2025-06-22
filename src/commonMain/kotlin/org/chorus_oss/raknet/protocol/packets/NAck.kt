@@ -3,11 +3,10 @@ package org.chorus_oss.raknet.protocol.packets
 import kotlinx.io.*
 import org.chorus_oss.raknet.protocol.RakPacketCodec
 import org.chorus_oss.raknet.protocol.types.UMedium
-import org.chorus_oss.raknet.protocol.types.UMediumLE
 import org.chorus_oss.raknet.types.RakPacketID
 
 data class NAck(
-    val sequences: List<UMedium>
+    val sequences: List<UInt>
 ) {
     companion object : RakPacketCodec<NAck> {
         override val id: UByte
@@ -46,14 +45,14 @@ data class NAck(
 
             val size = stream.readUShort().toInt()
 
-            val sequences = mutableListOf<UMedium>()
+            val sequences = mutableListOf<UInt>()
             for (i in 0 until size) {
                 val single = stream.readByte() == 1.toByte()
                 if (single) {
-                    sequences.add(UMediumLE.deserialize(stream))
+                    sequences.add(UMedium.deserialize(stream))
                 } else {
-                    val start = UMediumLE.deserialize(stream)
-                    val end = UMediumLE.deserialize(stream)
+                    val start = UMedium.deserialize(stream)
+                    val end = UMedium.deserialize(stream)
                     sequences.addAll(start..end)
                 }
             }
@@ -61,14 +60,14 @@ data class NAck(
             return NAck(sequences)
         }
 
-        private fun writeRange(start: UMedium, end: UMedium, stream: Sink) {
+        private fun writeRange(start: UInt, end: UInt, stream: Sink) {
             if (start == end) {
                 stream.writeByte(1)
-                UMediumLE.serialize(start, stream)
+                UMedium.serialize(start, stream)
             } else {
                 stream.writeByte(0)
-                UMediumLE.serialize(start, stream)
-                UMediumLE.serialize(end, stream)
+                UMedium.serialize(start, stream)
+                UMedium.serialize(end, stream)
             }
         }
     }

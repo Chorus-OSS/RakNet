@@ -3,8 +3,7 @@ package org.chorus_oss.raknet.protocol.packets
 import kotlinx.io.*
 import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakPacketCodec
-import org.chorus_oss.raknet.protocol.types.Magic
-import org.chorus_oss.raknet.protocol.types.ByteString16
+import org.chorus_oss.raknet.types.RakConstants
 import org.chorus_oss.raknet.types.RakPacketID
 
 data class UnconnectedPong(
@@ -21,8 +20,9 @@ data class UnconnectedPong(
             stream.writeUByte(id) // Packet ID
             stream.writeULong(value.timestamp)
             stream.writeULong(value.guid)
-            Magic.serialize(value.magic, stream)
-            ByteString16.serialize(value.message, stream)
+            stream.write(value.magic)
+            stream.writeShort(value.message.size.toShort())
+            stream.write(value.message)
         }
 
         override fun deserialize(stream: Source): UnconnectedPong {
@@ -30,8 +30,8 @@ data class UnconnectedPong(
             return UnconnectedPong(
                 timestamp = stream.readULong(),
                 guid = stream.readULong(),
-                magic = Magic.deserialize(stream),
-                message = ByteString16.deserialize(stream)
+                magic = stream.readByteString(RakConstants.MAGIC.size),
+                message = stream.readByteString(stream.readUShort().toInt())
             )
         }
     }

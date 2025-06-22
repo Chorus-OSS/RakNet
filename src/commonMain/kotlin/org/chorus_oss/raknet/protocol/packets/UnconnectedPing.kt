@@ -3,7 +3,7 @@ package org.chorus_oss.raknet.protocol.packets
 import kotlinx.io.*
 import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakPacketCodec
-import org.chorus_oss.raknet.protocol.types.Magic
+import org.chorus_oss.raknet.types.RakConstants
 import org.chorus_oss.raknet.types.RakPacketID
 
 data class UnconnectedPing(
@@ -18,7 +18,7 @@ data class UnconnectedPing(
         override fun serialize(value: UnconnectedPing, stream: Sink) {
             stream.writeUByte(id) // Packet ID
             stream.writeULong(value.timestamp)
-            Magic.serialize(value.magic, stream)
+            stream.write(value.magic)
             stream.writeULong(value.client)
         }
 
@@ -26,7 +26,7 @@ data class UnconnectedPing(
             stream.readUByte() // Packet ID
             return UnconnectedPing(
                 timestamp = stream.readULong(),
-                magic = Magic.deserialize(stream),
+                magic = stream.readByteString(RakConstants.MAGIC.size),
                 client = stream.readULong()
             )
         }

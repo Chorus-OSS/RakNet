@@ -4,7 +4,7 @@ import kotlinx.io.*
 import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakPacketCodec
 import org.chorus_oss.raknet.protocol.types.Address
-import org.chorus_oss.raknet.protocol.types.Magic
+import org.chorus_oss.raknet.types.RakConstants
 import org.chorus_oss.raknet.types.RakPacketID
 
 data class OpenConnectionRequest2(
@@ -19,7 +19,7 @@ data class OpenConnectionRequest2(
 
         override fun serialize(value: OpenConnectionRequest2, stream: Sink) {
             stream.writeUByte(id) // Packet ID
-            Magic.serialize(value.magic, stream)
+            stream.write(value.magic)
             Address.serialize(value.address, stream)
             stream.writeUShort(value.mtu)
             stream.writeULong(value.client)
@@ -28,7 +28,7 @@ data class OpenConnectionRequest2(
         override fun deserialize(stream: Source): OpenConnectionRequest2 {
             stream.readUByte() // Packet ID
             return OpenConnectionRequest2(
-                magic = Magic.deserialize(stream),
+                magic = stream.readByteString(RakConstants.MAGIC.size),
                 address = Address.deserialize(stream),
                 mtu = stream.readUShort(),
                 client = stream.readULong()

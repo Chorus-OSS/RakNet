@@ -2,10 +2,11 @@ package org.chorus_oss.raknet.protocol.types
 
 import io.ktor.network.sockets.*
 import kotlinx.io.*
+import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakCodec
 
 data class Address(
-    val address: ByteArray,
+    val address: ByteString,
     val port: Int
 ) {
     init {
@@ -22,7 +23,7 @@ data class Address(
             }
 
             return Address(
-                address = resolvedAddress,
+                address = ByteString(resolvedAddress),
                 port = socketAddress.port
             )
         }
@@ -49,7 +50,7 @@ data class Address(
         override fun deserialize(stream: Source): Address {
             return when (val version = stream.readUByte()) {
                 4u.toUByte() -> {
-                    val address = stream.readByteArray(4)
+                    val address = stream.readByteString(4)
                     val port = stream.readUShort().toInt()
                     Address(address, port)
                 }
@@ -58,7 +59,7 @@ data class Address(
                     stream.skip(2)
                     val port = stream.readUShort().toInt()
                     stream.skip(4)
-                    val address = stream.readByteArray(16)
+                    val address = stream.readByteString(16)
                     stream.skip(4)
                     Address(address, port)
                 }
@@ -66,25 +67,5 @@ data class Address(
                 else -> throw IllegalArgumentException("Unexpected version: $version")
             }
         }
-    }
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other == null || this::class != other::class) return false
-
-        other as Address
-
-        if (port != other.port) return false
-        if (!address.contentEquals(other.address)) return false
-        if (isIPv6 != other.isIPv6) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = port
-        result = 31 * result + address.contentHashCode()
-        result = 31 * result + isIPv6.hashCode()
-        return result
     }
 }

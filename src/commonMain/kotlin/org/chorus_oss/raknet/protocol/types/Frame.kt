@@ -1,6 +1,5 @@
 package org.chorus_oss.raknet.protocol.types
 
-import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.utils.io.core.*
 import kotlinx.io.*
 import kotlinx.io.Buffer
@@ -12,9 +11,9 @@ import kotlin.math.ceil
 data class Frame(
     var reliability: RakReliability,
     var payload: Buffer,
-    var reliableIndex: UMedium = 0u,
-    var sequenceIndex: UMedium = 0u,
-    var orderIndex: UMedium = 0u,
+    var reliableIndex: UInt = 0u,
+    var sequenceIndex: UInt = 0u,
+    var orderIndex: UInt = 0u,
     var orderChannel: UByte = 0u,
     var splitSize: UInt = 0u,
     var splitID: UShort = 0u,
@@ -39,8 +38,6 @@ data class Frame(
         }
 
     companion object : RakCodec<List<Frame>> {
-        private val log = KotlinLogging.logger {}
-
         override fun serialize(value: List<Frame>, stream: Sink) {
             for (frame in value) {
                 stream.writeUByte(
@@ -55,15 +52,15 @@ data class Frame(
                 stream.writeUShort((frame.payload.size shl 3).toUShort())
 
                 if (frame.reliability.isReliable) {
-                    UMediumLE.serialize(frame.reliableIndex, stream)
+                    UMedium.serialize(frame.reliableIndex, stream)
                 }
 
                 if (frame.reliability.isSequenced) {
-                    UMediumLE.serialize(frame.sequenceIndex, stream)
+                    UMedium.serialize(frame.sequenceIndex, stream)
                 }
 
                 if (frame.reliability.isOrdered) {
-                    UMediumLE.serialize(frame.orderIndex, stream)
+                    UMedium.serialize(frame.orderIndex, stream)
                     stream.writeUByte(frame.orderChannel)
                 }
 
@@ -87,20 +84,20 @@ data class Frame(
 
                 val length = ceil(stream.readUShort().toFloat() / 8f).toLong()
 
-                var reliableIndex: UMedium = 0u
+                var reliableIndex: UInt = 0u
                 if (reliability.isReliable) {
-                    reliableIndex = UMediumLE.deserialize(stream)
+                    reliableIndex = UMedium.deserialize(stream)
                 }
 
-                var sequenceIndex: UMedium = 0u
+                var sequenceIndex: UInt = 0u
                 if (reliability.isSequenced) {
-                    sequenceIndex = UMediumLE.deserialize(stream)
+                    sequenceIndex = UMedium.deserialize(stream)
                 }
 
-                var orderIndex: UMedium = 0u
+                var orderIndex: UInt = 0u
                 var orderChannel: UByte = 0u
                 if (reliability.isOrdered) {
-                    orderIndex = UMediumLE.deserialize(stream)
+                    orderIndex = UMedium.deserialize(stream)
                     orderChannel = stream.readUByte()
                 }
 

@@ -3,7 +3,7 @@ package org.chorus_oss.raknet.protocol.packets
 import kotlinx.io.*
 import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakPacketCodec
-import org.chorus_oss.raknet.protocol.types.Magic
+import org.chorus_oss.raknet.types.RakConstants
 import org.chorus_oss.raknet.types.RakPacketID
 
 data class IncompatibleProtocol(
@@ -18,7 +18,7 @@ data class IncompatibleProtocol(
         override fun serialize(value: IncompatibleProtocol, stream: Sink) {
             stream.writeUByte(id) // Packet ID
             stream.writeUByte(value.protocol)
-            Magic.serialize(value.magic, stream)
+            stream.write(value.magic)
             stream.writeULong(value.guid)
         }
 
@@ -26,7 +26,7 @@ data class IncompatibleProtocol(
             stream.readUByte() // Packet ID
             return IncompatibleProtocol(
                 protocol = stream.readUByte(),
-                magic = Magic.deserialize(stream),
+                magic = stream.readByteString(RakConstants.MAGIC.size),
                 guid = stream.readULong(),
             )
         }
