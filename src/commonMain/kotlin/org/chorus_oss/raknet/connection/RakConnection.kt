@@ -3,6 +3,7 @@ package org.chorus_oss.raknet.connection
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.sockets.*
 import io.ktor.utils.io.core.*
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -67,12 +68,10 @@ class RakConnection(
         return this
     }
 
-    init {
-        server.launch {
-            while(isActive) {
-                tick()
-                delay(10)
-            }
+    val tickJob: Job = server.launch {
+        while(isActive) {
+            tick()
+            delay(10)
         }
     }
 
@@ -84,15 +83,16 @@ class RakConnection(
     }
 
     fun tick() {
+        if (status == RakStatus.Disconnecting || status == RakStatus.Disconnected) {
+            return
+        }
+
         if (lastUpdate.plus(15000.milliseconds) < Clock.System.now()) {
             log.warn { "Detected stale connection from $address, disconnecting..." }
 
             return disconnect()
         }
 
-        if (status == RakStatus.Disconnecting || status == RakStatus.Disconnected) {
-            return
-        }
 
         if (receivedFrameSequences.isNotEmpty()) {
             val ack = Ack(
@@ -152,6 +152,8 @@ class RakConnection(
         server.connections.remove(address)
 
         status = RakStatus.Disconnected
+
+        tickJob.cancel()
     }
 
     fun incoming(stream: Source) {
