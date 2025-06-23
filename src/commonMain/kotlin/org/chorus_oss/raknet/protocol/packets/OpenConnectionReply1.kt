@@ -9,7 +9,7 @@ import org.chorus_oss.raknet.types.RakPacketID
 data class OpenConnectionReply1(
     val magic: ByteString,
     val guid: ULong,
-    val security: Boolean,
+    val cookie: Int?,
     val mtu: UShort
 ) {
     companion object : RakPacketCodec<OpenConnectionReply1> {
@@ -20,7 +20,13 @@ data class OpenConnectionReply1(
             stream.writeUByte(id) // Packet ID
             stream.write(value.magic)
             stream.writeULong(value.guid)
-            stream.writeUByte(if (value.security) 1u else 0u)
+            when (value.cookie != null) {
+                true -> {
+                    stream.writeByte(1)
+                    stream.writeInt(value.cookie)
+                }
+                false -> stream.writeByte(0)
+            }
             stream.writeUShort(value.mtu)
         }
 
@@ -29,7 +35,10 @@ data class OpenConnectionReply1(
             return OpenConnectionReply1(
                 magic = stream.readByteString(RakConstants.MAGIC.size),
                 guid = stream.readULong(),
-                security = stream.readUByte() == 1u.toUByte(),
+                cookie = when (stream.readByte() == 1.toByte()) {
+                    true -> stream.readInt()
+                    false -> null
+                },
                 mtu = stream.readUShort()
             )
         }

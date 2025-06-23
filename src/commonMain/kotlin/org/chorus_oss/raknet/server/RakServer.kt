@@ -136,7 +136,7 @@ class RakServer(
                 val reply = OpenConnectionReply1(
                     guid = config.guid,
                     magic = config.magic,
-                    security = false,
+                    cookie = null,
                     mtu = (packet.mtu + RakConstants.UDP_HEADER_SIZE).toUShort().coerceAtMost(config.maxMTUSize)
                 )
 
