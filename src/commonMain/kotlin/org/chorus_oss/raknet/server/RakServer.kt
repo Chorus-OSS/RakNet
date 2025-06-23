@@ -20,7 +20,7 @@ class RakServer(
     val port: Int,
     val config: RakServerConfig
 ) : CoroutineScope {
-    override val coroutineContext: CoroutineContext = Dispatchers.IO + SupervisorJob() + CoroutineName("RakNetServer")
+    override val coroutineContext: CoroutineContext = Dispatchers.IO + SupervisorJob() + CoroutineName("RakServer")
 
     val connections: MutableMap<SocketAddress, RakSession> = mutableMapOf()
 
@@ -202,7 +202,7 @@ class RakServer(
     }
 
     companion object {
-        private val selector: SelectorManager = SelectorManager(Dispatchers.IO + CoroutineName("RakNetServer - SelectorManager"))
+        private val selector: SelectorManager = SelectorManager(Dispatchers.IO + CoroutineName("RakServer - SelectorManager"))
 
         private val log = KotlinLogging.logger {}
     }
