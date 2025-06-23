@@ -15,6 +15,7 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -54,14 +55,17 @@ class RakClient(
     private var attempts: Int = 0
     private var cookie: Int? = null
 
-    private val timeout: Job = launch(start = CoroutineStart.LAZY) {
+    private val timeout: Job = launch(CoroutineName("RakClientTimeout"), start = CoroutineStart.LAZY) {
+        log { "Launched" }
         delay(config.timeout.milliseconds)
         log { "RakClient connection timed out after ${config.timeout}ms"}
         stop()
+        log { "Completed" }
     }
 
-    private val request: Job = launch(start = CoroutineStart.LAZY) {
-        loop@while (attempts <= config.connectRetryMax) {
+    private val request: Job = launch(CoroutineName("RakClientRequest"), start = CoroutineStart.LAZY) {
+        log { "Launched" }
+        loop@while (attempts < config.connectRetryMax && isActive) {
             when (state) {
                 RakOfflineState.Handshake1 -> {
                     sendOpenConnectionRequest1()
@@ -79,6 +83,7 @@ class RakClient(
             log { "RakClient connection failed after $attempts attempts" }
             stop()
         }
+        log { "Completed" }
     }
 
     suspend fun startSuspend(wait: Boolean = false): RakClient {
@@ -108,18 +113,23 @@ class RakClient(
                         log { "Completed" }
                     }
 
+                    timeout.start()
+                    request.start()
+
                     started.complete()
                     stop.join()
                 } finally {
                     socket.close()
+
+                    timeout.cancel()
+                    request.cancel()
                 }
             } catch (e: Exception) {
                 started.completeExceptionally(e)
                 throw e
             } finally {
                 outbound.close()
-                timeout.cancel()
-                request.cancel()
+
                 stopped.complete()
             }
             log { "Completed" }
@@ -229,6 +239,7 @@ class RakClient(
             config.mtu = packet.mtu
 
             state = RakOfflineState.HandshakeCompleted
+            onConnect()
         }
     }
 

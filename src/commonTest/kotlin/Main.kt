@@ -14,7 +14,7 @@ class Main {
 
 
     @Test
-    fun main() {
+    fun server() {
         var rakServer: RakServer? = null
         rakServer = rakServer("0.0.0.0", 19132) {
             message = BedrockMOTD(
@@ -54,13 +54,48 @@ class Main {
     fun client() {
         val client = rakClient("127.0.0.1", 19132) {
             infoLogging = true
+            connectRetryMax = 3
         }
 
-        CoroutineScope(Dispatchers.Default).launch {
-            delay(3000)
-            client.stop()
+        client.start(wait = true)
+    }
+
+    @Test
+    fun both() {
+        val server = rakServer("127.0.0.1", 19132) {
+            message = BedrockMOTD(
+                name = "chorus-oss.org",
+                protocol = 0,
+                version = "1.0.0",
+                playerCount = 0,
+                playerMax = -1,
+                guid = guid,
+                subName = "RakNet",
+                gamemode = "Adventure"
+            ).toByteString()
+
+            onConnect { connection ->
+                log.info { "Connected on ${connection.address}, with guid: ${connection.guid}" }
+
+                connection.onPacket { stream ->
+                    log.info { "Packet from ${connection.address}: ${stream.readByteArray().toHexString(HexFormat.UpperCase)}" }
+                }
+
+                connection.onError { error ->
+                    log.error { "Error from ${connection.address}: $error" }
+                }
+            }
+
+            onDisconnect { connection ->
+                log.info { "Disconnected on ${connection.address}" }
+            }
         }
 
+        val client = rakClient("127.0.0.1", 19132) {
+            infoLogging = true
+        }
+
+        server.start()
         client.start(wait = true)
     }
 
