@@ -39,6 +39,7 @@ class Main {
 
             onDisconnect { connection ->
                 log.info { "Disconnected on ${connection.address}" }
+                rakServer?.stop()
             }
         }
         rakServer?.start(wait = true)

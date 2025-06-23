@@ -46,24 +46,13 @@ class RakServer(
 
     fun start(wait: Boolean = false): RakServer = runBlocking { startSuspend(wait) }
 
-    suspend fun stopSuspend(gracePeriod: Long = 500, timeout: Long = 500) {
+    suspend fun stopSuspend() {
         stop.complete()
 
-        val result = withTimeoutOrNull(gracePeriod) {
-            serverJob.join()
-            true
-        }
-
-        if (result == null) {
-            serverJob.cancel()
-
-            withTimeoutOrNull(gracePeriod - timeout) {
-                serverJob.join()
-            }
-        }
+        serverJob.cancelAndJoin()
     }
 
-    fun stop(gracePeriod: Long = 500, timeout: Long = 500) = runBlocking { stopSuspend(gracePeriod, timeout) }
+    fun stop() = runBlocking { stopSuspend() }
 
     private fun initServerJob(): Job {
         return launch(start = CoroutineStart.LAZY) {

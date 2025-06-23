@@ -57,13 +57,13 @@ class RakConnection(
     var onPacket: (Source) -> Unit = {}
     var onError: (Error) -> Unit = {}
 
-    fun onPacket(onPacket: (Source) -> Unit): RakConnection {
-        this.onPacket = onPacket
+    fun onPacket(fn: (Source) -> Unit): RakConnection {
+        this.onPacket = fn
         return this
     }
 
-    fun onError(onError: (Error) -> Unit): RakConnection {
-        this.onError = onError
+    fun onError(fn: (Error) -> Unit): RakConnection {
+        this.onError = fn
         return this
     }
 

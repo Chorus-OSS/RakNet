@@ -1,8 +1,9 @@
 package org.chorus_oss.raknet
 
+import org.chorus_oss.raknet.client.RakClient
+import org.chorus_oss.raknet.config.RakClientConfig
 import org.chorus_oss.raknet.config.RakServerConfig
 import org.chorus_oss.raknet.server.RakServer
-import org.chorus_oss.raknet.types.RakConnectionFactory
 
 fun rakServer(
     host: String = "0.0.0.0",
@@ -12,4 +13,12 @@ fun rakServer(
     val config = RakServerConfig().apply(config)
 
     return RakServer(host, port, config)
+}
+
+fun rakClient(
+    config: RakClientConfig.() -> Unit = {}
+): RakClient {
+    val config = RakClientConfig().apply(config)
+
+    return RakClient(config)
 }
