@@ -9,7 +9,7 @@ import kotlinx.coroutines.channels.SendChannel
 import kotlinx.io.Buffer
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.config.RakServerConfig
-import org.chorus_oss.raknet.connection.RakConnection
+import org.chorus_oss.raknet.connection.RakSession
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.types.*
@@ -22,7 +22,7 @@ class RakServer(
 ) : CoroutineScope {
     override val coroutineContext: CoroutineContext = Dispatchers.IO + SupervisorJob() + CoroutineName("RakNetServer")
 
-    val connections: MutableMap<SocketAddress, RakConnection> = mutableMapOf()
+    val connections: MutableMap<SocketAddress, RakSession> = mutableMapOf()
 
     private val _outbound: Channel<Datagram> = Channel(Channel.UNLIMITED)
 
@@ -180,7 +180,7 @@ class RakServer(
 
                 log.info { "Establishing connection from ${datagram.address} with mtu size of ${packet.mtu}." }
 
-                this.connections[datagram.address] = RakConnection(this, datagram.address, packet.client, packet.mtu)
+                this.connections[datagram.address] = RakSession(this, datagram.address, packet.client, packet.mtu)
 
                 outbound.trySend(
                     Datagram(

@@ -22,7 +22,7 @@ import org.chorus_oss.raknet.types.*
 import kotlin.math.ceil
 import kotlin.time.Duration.Companion.milliseconds
 
-class RakConnection(
+class RakSession(
     val server: RakServer,
     val address: SocketAddress,
     val guid: ULong,
@@ -57,12 +57,12 @@ class RakConnection(
     var onPacket: (Source) -> Unit = {}
     var onError: (Error) -> Unit = {}
 
-    fun onPacket(fn: (Source) -> Unit): RakConnection {
+    fun onPacket(fn: (Source) -> Unit): RakSession {
         this.onPacket = fn
         return this
     }
 
-    fun onError(fn: (Error) -> Unit): RakConnection {
+    fun onError(fn: (Error) -> Unit): RakSession {
         this.onError = fn
         return this
     }

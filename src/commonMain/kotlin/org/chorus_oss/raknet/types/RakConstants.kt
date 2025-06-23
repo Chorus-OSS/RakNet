@@ -12,7 +12,20 @@ object RakConstants {
 
     const val MAX_ORDERING_CHANNELS: Int = 16
     const val PACKET_LIMIT: Int = 120
-    const val TOTAL_PACKET_LIMIT: Int = 100000
+    const val TOTAL_PACKET_LIMIT: Int = 100_000
+
+    const val SESSION_TIMEOUT_MS: Int = 10_000
+    const val SESSION_STALE_MS: Int = 5_000
+
+    const val CONNECT_TIMEOUT_MS: Int = SESSION_TIMEOUT_MS
+    const val CONNECT_RETRY_MS: Int = 1_000
+    const val CONNECT_RETRY_MAX: Int = 10
+
+    const val AUTOFLUSH: Boolean = true
+    const val AUTOFLUSH_INTERVAL_MS: Int = 10
+
+    const val MAX_QUEUED_BYTES: Int = 67_108_864
 
     val MAGIC: ByteString = ByteString(0, -1, -1, 0, -2, -2, -2, -2, -3, -3, -3, -3, 18, 52, 86, 120)
+    val MTU_SIZES: List<UShort> = listOf(MIN_MTU_SIZE, 1200u, MAX_MTU_SIZE)
 }
