@@ -1,7 +1,7 @@
 package org.chorus_oss.raknet.config
 
 import kotlinx.io.bytestring.ByteString
-import org.chorus_oss.raknet.connection.RakSession
+import org.chorus_oss.raknet.session.RakSession
 import org.chorus_oss.raknet.types.RakConstants
 import kotlin.random.Random
 import kotlin.random.nextULong

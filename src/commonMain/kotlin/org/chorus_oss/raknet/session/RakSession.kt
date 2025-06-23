@@ -1,10 +1,12 @@
-package org.chorus_oss.raknet.connection
+package org.chorus_oss.raknet.session
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.sockets.*
 import io.ktor.utils.io.core.*
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -23,15 +25,19 @@ import kotlin.math.ceil
 import kotlin.time.Duration.Companion.milliseconds
 
 class RakSession(
-    val server: RakServer,
+    scope: CoroutineScope,
+    val outbound: SendChannel<Datagram>,
     val address: SocketAddress,
     val guid: ULong,
     val mtu: UShort,
+    private val onDisconnect: (RakSession) -> Unit,
+    private val onConnect: (RakSession) -> Unit,
 ) {
-    private var status: RakStatus = RakStatus.Connecting
+    var status: RakStatus = RakStatus.Connecting
+        private set
     private var lastUpdate: Instant = Clock.System.now()
 
-    private val outbound: Channel<Datagram> = Channel(Channel.UNLIMITED)
+    private val queued: Channel<Datagram> = Channel(Channel.UNLIMITED)
 
     private val receivedFrameSequences = mutableSetOf<UInt>()
     private val lostFrameSequences = mutableSetOf<UInt>()
@@ -67,7 +73,7 @@ class RakSession(
         return this
     }
 
-    val tickJob: Job = server.launch {
+    val tickJob: Job = scope.launch {
         while(isActive) {
             tick()
             delay(10)
@@ -76,8 +82,8 @@ class RakSession(
 
     fun flush() {
         while (true) {
-            val out = outbound.tryReceive().getOrNull() ?: break
-            server.outbound.trySend(out)
+            val out = queued.tryReceive().getOrNull() ?: break
+            outbound.trySend(out)
         }
     }
 
@@ -89,7 +95,7 @@ class RakSession(
         if (lastUpdate.plus(15000.milliseconds) < Clock.System.now()) {
             log.warn { "Detected stale connection from $address, disconnecting..." }
 
-            return disconnect()
+            return disconnect(send = true, connected = true)
         }
 
 
@@ -100,7 +106,7 @@ class RakSession(
 
             receivedFrameSequences.clear()
 
-            outbound.trySend(
+            queued.trySend(
                 Datagram(
                     packet = Buffer().also {
                         Ack.serialize(ack, it)
@@ -117,7 +123,7 @@ class RakSession(
 
             lostFrameSequences.clear()
 
-            outbound.trySend(
+            queued.trySend(
                 Datagram(
                     packet = Buffer().also {
                         NAck.serialize(nack, it)
@@ -132,23 +138,27 @@ class RakSession(
         flush()
     }
 
-    fun disconnect() {
+    private fun disconnect(send: Boolean, connected: Boolean) {
         status = RakStatus.Disconnecting
 
-        val disconnect = Disconnect()
+        if (send) {
+            val disconnect = Disconnect()
 
-        val frame = Frame(
-            reliability = RakReliability.ReliableOrdered,
-            orderChannel = 0u,
-            payload = Buffer().also {
-                Disconnect.serialize(disconnect, it)
-            }
-        )
+            val frame = Frame(
+                reliability = RakReliability.ReliableOrdered,
+                orderChannel = 0u,
+                payload = Buffer().also {
+                    Disconnect.serialize(disconnect, it)
+                }
+            )
 
-        sendFrame(frame, RakPriority.Immediate)
+            sendFrame(frame, RakPriority.Immediate)
+        }
 
-        server.config.onDisconnect(this)
-        server.connections.remove(address)
+        if (connected) {
+            onDisconnect(this)
+        }
+
 
         status = RakStatus.Disconnected
 
@@ -182,7 +192,7 @@ class RakSession(
             when (header) {
                 RakPacketID.DISCONNECT -> {
                     status = RakStatus.Disconnecting
-                    server.connections.remove(address)
+                    disconnect(send = false, connected = false)
                     status = RakStatus.Disconnected
                 }
 
@@ -192,7 +202,7 @@ class RakSession(
 
                 RakPacketID.NEW_INCOMING_CONNECTION -> {
                     status = RakStatus.Connected
-                    server.config.onConnect(this)
+                    onConnect(this)
                 }
 
                 else -> {
@@ -210,8 +220,7 @@ class RakSession(
         when (header) {
             RakPacketID.DISCONNECT -> {
                 status = RakStatus.Disconnecting
-                server.config.onDisconnect(this)
-                server.connections.remove(address)
+                disconnect(send = false, connected = true)
                 status = RakStatus.Disconnected
             }
 
@@ -429,7 +438,7 @@ class RakSession(
             outputFrames.remove(frame)
         }
 
-        outbound.trySend(
+        queued.trySend(
             Datagram(
                 packet = Buffer().also {
                     FrameSet.serialize(frameSet, it)

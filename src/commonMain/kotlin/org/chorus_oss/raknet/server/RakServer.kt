@@ -5,11 +5,10 @@ import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.SendChannel
 import kotlinx.io.Buffer
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.config.RakServerConfig
-import org.chorus_oss.raknet.connection.RakSession
+import org.chorus_oss.raknet.session.RakSession
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.types.*
@@ -22,12 +21,9 @@ class RakServer(
 ) : CoroutineScope {
     override val coroutineContext: CoroutineContext = Dispatchers.IO + SupervisorJob() + CoroutineName("RakServer")
 
-    val connections: MutableMap<SocketAddress, RakSession> = mutableMapOf()
+    private val sessions: MutableMap<SocketAddress, RakSession> = mutableMapOf()
 
-    private val _outbound: Channel<Datagram> = Channel(Channel.UNLIMITED)
-
-    val outbound: SendChannel<Datagram>
-        get() = _outbound
+    private val outbound: Channel<Datagram> = Channel(Channel.UNLIMITED)
 
     private val startup: CompletableDeferred<Unit> = CompletableDeferred()
     private val stop: CompletableJob = Job()
@@ -65,7 +61,7 @@ class RakServer(
             }
 
             val sendJob = launch {
-                for (data in _outbound) {
+                for (data in outbound) {
                     socket.send(data)
                 }
             }
@@ -87,7 +83,7 @@ class RakServer(
         }
 
         if (!offline) {
-            connections[datagram.address]?.incoming(datagram.packet)
+            sessions[datagram.address]?.incoming(datagram.packet)
         }
     }
 
@@ -166,7 +162,7 @@ class RakServer(
                     return log.warn { "Refusing connection from ${datagram.address} due to invalid mtu size." }
                 }
 
-                if (this.connections.contains(datagram.address)) {
+                if (this.sessions.contains(datagram.address)) {
                     return log.warn { "Refusing connection from ${datagram.address} due to already established connection." }
                 }
 
@@ -180,7 +176,7 @@ class RakServer(
 
                 log.info { "Establishing connection from ${datagram.address} with mtu size of ${packet.mtu}." }
 
-                this.connections[datagram.address] = RakSession(this, datagram.address, packet.client, packet.mtu)
+                this.sessions[datagram.address] = RakSession(this, this.outbound, datagram.address, packet.client, packet.mtu, ::onDisconnect, ::onConnect)
 
                 outbound.trySend(
                     Datagram(
@@ -199,6 +195,15 @@ class RakServer(
                 }
             }
         }
+    }
+
+    private fun onDisconnect(session: RakSession) {
+        config.onDisconnect(session)
+        sessions.remove(session.address)
+    }
+
+    private fun onConnect(session: RakSession) {
+        config.onConnect(session)
     }
 
     companion object {
