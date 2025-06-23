@@ -10,9 +10,13 @@ object RakPacketID {
     const val OPEN_CONNECTION_REPLY_2: UByte = 0x08u
     const val CONNECTION_REQUEST: UByte = 0x09u
     const val CONNECTION_REQUEST_ACCEPTED: UByte = 0x10u
+    const val CONNECTION_REQUEST_FAILED: UByte = 0x11u
+    const val ALREADY_CONNECTED: UByte = 0x12u
     const val NEW_INCOMING_CONNECTION: UByte = 0x13u
+    const val NO_FREE_INCOMING_CONNECTIONS: UByte = 0x14u
     const val DISCONNECT: UByte = 0x15u
     const val INCOMPATIBLE_PROTOCOL_VERSION: UByte = 0x19u
+    const val IP_RECENTLY_CONNECTED: UByte = 0x1au
     const val UNCONNECTED_PONG: UByte = 0x1Cu
     const val FRAME_SET: UByte = 0x80u
     const val NACK: UByte = 0xA0u

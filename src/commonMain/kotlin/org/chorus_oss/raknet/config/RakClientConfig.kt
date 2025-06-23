@@ -3,8 +3,11 @@ package org.chorus_oss.raknet.config
 import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.session.RakSession
 import org.chorus_oss.raknet.types.RakConstants
+import kotlin.random.Random
+import kotlin.random.nextULong
 
 class RakClientConfig : RakSessionConfig() {
+    var guid: ULong = Random.nextULong()
     var magic: ByteString = RakConstants.MAGIC
     var connectTimeout: Int = RakConstants.CONNECT_TIMEOUT_MS
     var connectRetryDelay: Int = RakConstants.CONNECT_RETRY_MS

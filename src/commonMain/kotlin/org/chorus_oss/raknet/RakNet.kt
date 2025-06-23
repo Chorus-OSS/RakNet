@@ -16,9 +16,11 @@ fun rakServer(
 }
 
 fun rakClient(
+    host: String = "127.0.0.1",
+    port: Int = 19132,
     config: RakClientConfig.() -> Unit = {}
 ): RakClient {
     val config = RakClientConfig().apply(config)
 
-    return RakClient(config)
+    return RakClient(host, port, config)
 }

@@ -11,10 +11,11 @@ import kotlin.test.Test
 
 @OptIn(ExperimentalStdlibApi::class)
 class Main {
-    var rakServer: RakServer? = null
+
 
     @Test
     fun main() {
+        var rakServer: RakServer? = null
         rakServer = rakServer("0.0.0.0", 19132) {
             message = BedrockMOTD(
                 name = "chorus-oss.org",
@@ -46,21 +47,21 @@ class Main {
                 rakServer?.stop()
             }
         }
-        rakServer?.start(wait = true)
+        rakServer.start(wait = true)
     }
 
     @Test
     fun client() {
-        val client = rakClient {
+        val client = rakClient("127.0.0.1", 19132) {
             infoLogging = true
         }
 
         CoroutineScope(Dispatchers.Default).launch {
             delay(3000)
-            client.disconnect()
+            client.stop()
         }
 
-        client.connect("127.0.0.1", 19132, wait = true)
+        client.start(wait = true)
     }
 
     companion object {
