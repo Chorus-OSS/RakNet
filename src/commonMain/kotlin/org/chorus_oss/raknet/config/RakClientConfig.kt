@@ -1,7 +1,7 @@
 package org.chorus_oss.raknet.config
 
 import kotlinx.io.bytestring.ByteString
-import org.chorus_oss.raknet.connection.RakSession
+import org.chorus_oss.raknet.session.RakSession
 import org.chorus_oss.raknet.types.RakConstants
 
 class RakClientConfig : RakSessionConfig() {
@@ -12,6 +12,8 @@ class RakClientConfig : RakSessionConfig() {
     var serverGUID: ULong = 0uL
     var mtuSizes: List<UShort> = RakConstants.MTU_SIZES
     var internalAddresses: Int = 10
+
+    var infoLogging: Boolean = false
 
     var onConnect: (RakSession) -> Unit = {}
     var onDisconnect: (RakSession) -> Unit = {}

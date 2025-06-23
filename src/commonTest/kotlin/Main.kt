@@ -1,6 +1,10 @@
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.io.bytestring.encodeToByteString
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.io.readByteArray
+import org.chorus_oss.raknet.rakClient
 import org.chorus_oss.raknet.rakServer
 import org.chorus_oss.raknet.server.RakServer
 import kotlin.test.Test
@@ -43,6 +47,20 @@ class Main {
             }
         }
         rakServer?.start(wait = true)
+    }
+
+    @Test
+    fun client() {
+        val client = rakClient {
+            infoLogging = true
+        }
+
+        CoroutineScope(Dispatchers.Default).launch {
+            delay(3000)
+            client.disconnect()
+        }
+
+        client.connect("127.0.0.1", 19132, wait = true)
     }
 
     companion object {
