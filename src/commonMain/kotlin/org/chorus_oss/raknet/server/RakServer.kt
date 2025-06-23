@@ -8,10 +8,12 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.io.Buffer
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.config.RakServerConfig
-import org.chorus_oss.raknet.session.RakSession
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
-import org.chorus_oss.raknet.types.*
+import org.chorus_oss.raknet.session.RakSession
+import org.chorus_oss.raknet.types.RakConstants
+import org.chorus_oss.raknet.types.RakHeader
+import org.chorus_oss.raknet.types.RakPacketID
 import kotlin.coroutines.CoroutineContext
 
 class RakServer(
@@ -176,7 +178,15 @@ class RakServer(
 
                 log.info { "Establishing connection from ${datagram.address} with mtu size of ${packet.mtu}." }
 
-                this.sessions[datagram.address] = RakSession(this, this.outbound, datagram.address, packet.client, packet.mtu, ::onDisconnect, ::onConnect)
+                this.sessions[datagram.address] = RakSession(
+                    this,
+                    this.outbound,
+                    datagram.address,
+                    packet.client,
+                    packet.mtu,
+                    ::onDisconnect,
+                    ::onConnect
+                )
 
                 outbound.trySend(
                     Datagram(
@@ -207,7 +217,8 @@ class RakServer(
     }
 
     companion object {
-        private val selector: SelectorManager = SelectorManager(Dispatchers.IO + CoroutineName("RakServer - SelectorManager"))
+        private val selector: SelectorManager =
+            SelectorManager(Dispatchers.IO + CoroutineName("RakServer - SelectorManager"))
 
         private val log = KotlinLogging.logger {}
     }

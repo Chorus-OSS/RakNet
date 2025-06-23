@@ -17,9 +17,9 @@ object RakConstants {
     const val SESSION_TIMEOUT_MS: Int = 10_000
     const val SESSION_STALE_MS: Int = 5_000
 
-    const val CONNECT_TIMEOUT_MS: Int = SESSION_TIMEOUT_MS
-    const val CONNECT_RETRY_MS: Int = 1_000
-    const val CONNECT_RETRY_MAX: Int = 10
+    const val CONNECTION_ATTEMPT_TIMEOUT_MS: Int = SESSION_TIMEOUT_MS
+    const val CONNECTION_ATTEMPT_INTERVAL_MS: Int = 1_000
+    const val CONNECTION_ATTEMPT_MAX: Int = 10
 
     const val AUTOFLUSH: Boolean = true
     const val AUTOFLUSH_INTERVAL_MS: Int = 10

@@ -25,6 +25,7 @@ data class OpenConnectionReply1(
                     stream.writeByte(1)
                     stream.writeInt(value.cookie)
                 }
+
                 false -> stream.writeByte(0)
             }
             stream.writeUShort(value.mtu)

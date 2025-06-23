@@ -1,27 +1,11 @@
 package org.chorus_oss.raknet.client
 
 import io.github.oshai.kotlinlogging.KotlinLogging
-import io.ktor.network.selector.SelectorManager
-import io.ktor.network.sockets.Datagram
-import io.ktor.network.sockets.InetSocketAddress
-import io.ktor.network.sockets.aSocket
-import io.ktor.utils.io.core.preview
-import kotlinx.coroutines.CompletableJob
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.cancelAndJoin
+import io.ktor.network.selector.*
+import io.ktor.network.sockets.*
+import io.ktor.utils.io.core.*
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.Buffer
 import kotlinx.io.Source
 import kotlinx.io.readUByte
@@ -39,7 +23,7 @@ class RakClient(
     val host: String,
     val port: Int,
     val config: RakClientConfig,
-): CoroutineScope {
+) : CoroutineScope {
     override val coroutineContext: CoroutineContext = Dispatchers.IO + SupervisorJob() + CoroutineName("RakClient")
 
     private val start: CompletableJob = Job()
@@ -56,61 +40,54 @@ class RakClient(
     private var cookie: Int? = null
 
     private val timeout: Job = launch(CoroutineName("RakClientTimeout"), start = CoroutineStart.LAZY) {
-        log { "Launched" }
-        delay(config.timeout.milliseconds)
-        log { "RakClient connection timed out after ${config.timeout}ms"}
+        delay(config.connectionAttemptTimeout.milliseconds)
+        log.warn { "RakClient connection timed out after ${config.timeout}ms" }
         stop()
-        log { "Completed" }
     }
 
     private val request: Job = launch(CoroutineName("RakClientRequest"), start = CoroutineStart.LAZY) {
-        log { "Launched" }
-        loop@while (attempts < config.connectRetryMax && isActive) {
+        loop@ while (attempts < config.connectionAttemptMax && isActive) {
             when (state) {
                 RakOfflineState.Handshake1 -> {
                     sendOpenConnectionRequest1()
                     attempts++
                 }
+
                 RakOfflineState.Handshake2 -> {
                     sendOpenConnectionRequest2()
                 }
+
                 RakOfflineState.HandshakeCompleted -> break@loop
             }
-            delay(config.connectRetryDelay.milliseconds)
+            delay(config.connectionAttemptInterval.milliseconds)
         }
 
-        if (attempts >= config.connectRetryMax) {
-            log { "RakClient connection failed after $attempts attempts" }
+        if (attempts >= config.connectionAttemptMax) {
+            log.warn { "RakClient connection failed after $attempts attempts" }
             stop()
         }
-        log { "Completed" }
     }
 
     suspend fun startSuspend(wait: Boolean = false): RakClient {
         if (!start.complete()) throw IllegalStateException("RakClient has already started")
 
         launch(CoroutineName("RakClientMain")) {
-            log { "Launched" }
             try {
                 val socket = aSocket(selector).udp().connect(remote)
-                log { "RakClient connected to $host:$port" }
+                log.debug { "RakClient connected to $host:$port" }
                 try {
                     launch(CoroutineName("RakClientInbound")) {
-                        log { "Launched" }
                         while (isActive) {
                             val datagram = socket.incoming.receiveCatching().getOrNull() ?: break
                             inbound(datagram)
                         }
-                        log { "Completed" }
                     }
 
                     launch(CoroutineName("RakClientOutbound")) {
-                        log { "Launched" }
                         while (isActive) {
                             val datagram = outbound.receiveCatching().getOrNull() ?: break
                             socket.send(datagram)
                         }
-                        log { "Completed" }
                     }
 
                     timeout.start()
@@ -132,7 +109,6 @@ class RakClient(
 
                 stopped.complete()
             }
-            log { "Completed" }
         }
         started.join()
 
@@ -148,7 +124,7 @@ class RakClient(
         withTimeoutOrNull(timeout) {
             stopped.join()
         } ?: run {
-            log { "RakClient closing timed out after ${timeout}ms, force-closing" }
+            log.warn { "RakClient closing timed out after ${timeout}ms, force-closing" }
             cancel()
         }
     }
@@ -167,19 +143,22 @@ class RakClient(
                 RakPacketID.OPEN_CONNECTION_REPLY_1 -> onOpenConnectionReply1(datagram.packet)
                 RakPacketID.OPEN_CONNECTION_REPLY_2 -> onOpenConnectionReply2(datagram.packet)
                 RakPacketID.INCOMPATIBLE_PROTOCOL_VERSION -> {
-                    log { "RakClient connection failed due to incompatible protocol version" }
+                    log.warn { "RakClient connection failed due to incompatible protocol version" }
                     stop()
                 }
+
                 RakPacketID.ALREADY_CONNECTED -> {
-                    log { "RakClient connection failed because this IP is already connected" }
+                    log.warn { "RakClient connection failed because this IP is already connected" }
                     stop()
                 }
+
                 RakPacketID.NO_FREE_INCOMING_CONNECTIONS -> {
-                    log { "RakClient connection failed because the server has no free connections" }
+                    log.warn { "RakClient connection failed because the server has no free connections" }
                     stop()
                 }
+
                 RakPacketID.IP_RECENTLY_CONNECTED -> {
-                    log { "RakClient connection failed because the IP recent connected" }
+                    log.warn { "RakClient connection failed because the IP recent connected" }
                     stop()
                 }
             }
@@ -233,7 +212,7 @@ class RakClient(
         val packet = OpenConnectionReply2.deserialize(stream)
 
         if (packet.encryption) {
-            log { "RakClient failed to connect, security exception" }
+            log.warn { "RakClient failed to connect, security exception" }
             stop()
         } else {
             config.mtu = packet.mtu
@@ -243,13 +222,9 @@ class RakClient(
         }
     }
 
-    private fun log(fn: () -> String) {
-        if (config.infoLogging) log.info(fn)
-        else log.debug(fn)
-    }
-
     companion object {
-        private val selector: SelectorManager = SelectorManager(Dispatchers.IO + CoroutineName("RakClient - SelectorManager"))
+        private val selector: SelectorManager =
+            SelectorManager(Dispatchers.IO + CoroutineName("RakClient - SelectorManager"))
 
         private val log = KotlinLogging.logger {}
     }

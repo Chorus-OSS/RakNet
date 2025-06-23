@@ -29,10 +29,18 @@ data class Frame(
             length += 3
             length += payload.remaining
 
-            if (reliability.isReliable) { length += 3 }
-            if (reliability.isSequenced) { length += 3 }
-            if (reliability.isOrdered) { length += 4 }
-            if (isSplit) { length += 10 }
+            if (reliability.isReliable) {
+                length += 3
+            }
+            if (reliability.isSequenced) {
+                length += 3
+            }
+            if (reliability.isOrdered) {
+                length += 4
+            }
+            if (isSplit) {
+                length += 10
+            }
 
             return length
         }
@@ -42,11 +50,11 @@ data class Frame(
             for (frame in value) {
                 stream.writeUByte(
                     (frame.reliability.ordinal shl 5).toUByte() or (
-                        when {
-                            frame.isSplit -> RakHeader.SPLIT
-                            else -> 0u
-                        }
-                    )
+                            when {
+                                frame.isSplit -> RakHeader.SPLIT
+                                else -> 0u
+                            }
+                            )
                 )
 
                 stream.writeUShort((frame.payload.size shl 3).toUShort())
@@ -113,17 +121,19 @@ data class Frame(
                 val payload = Buffer()
                 stream.readTo(payload, length)
 
-                frames.add(Frame(
-                    reliability,
-                    payload,
-                    reliableIndex,
-                    sequenceIndex,
-                    orderIndex,
-                    orderChannel,
-                    splitSize,
-                    splitID,
-                    splitIndex,
-                ))
+                frames.add(
+                    Frame(
+                        reliability,
+                        payload,
+                        reliableIndex,
+                        sequenceIndex,
+                        orderIndex,
+                        orderChannel,
+                        splitSize,
+                        splitID,
+                        splitIndex,
+                    )
+                )
 
             } while (!stream.endOfInput)
 

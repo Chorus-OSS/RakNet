@@ -9,9 +9,9 @@ import kotlin.random.nextULong
 class RakClientConfig : RakSessionConfig() {
     var guid: ULong = Random.nextULong()
     var magic: ByteString = RakConstants.MAGIC
-    var connectTimeout: Int = RakConstants.CONNECT_TIMEOUT_MS
-    var connectRetryDelay: Int = RakConstants.CONNECT_RETRY_MS
-    var connectRetryMax: Int = RakConstants.CONNECT_RETRY_MAX
+    var connectionAttemptTimeout: Int = RakConstants.CONNECTION_ATTEMPT_TIMEOUT_MS
+    var connectionAttemptInterval: Int = RakConstants.CONNECTION_ATTEMPT_INTERVAL_MS
+    var connectionAttemptMax: Int = RakConstants.CONNECTION_ATTEMPT_MAX
     var serverGUID: ULong = 0uL
     var mtuSizes: List<UShort> = RakConstants.MTU_SIZES
     var internalAddresses: Int = 10

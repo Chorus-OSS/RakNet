@@ -1,6 +1,6 @@
 package org.chorus_oss.raknet.protocol.packets
 
-import io.ktor.utils.io.core.remaining
+import io.ktor.utils.io.core.*
 import kotlinx.io.*
 import org.chorus_oss.raknet.protocol.RakPacketCodec
 import org.chorus_oss.raknet.protocol.types.Address

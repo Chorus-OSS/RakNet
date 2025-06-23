@@ -3,13 +3,9 @@ package org.chorus_oss.raknet.session
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.sockets.*
 import io.ktor.utils.io.core.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.io.Buffer
@@ -19,7 +15,6 @@ import kotlinx.io.readUByte
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.protocol.types.Frame
-import org.chorus_oss.raknet.server.RakServer
 import org.chorus_oss.raknet.types.*
 import kotlin.math.ceil
 import kotlin.time.Duration.Companion.milliseconds
@@ -48,7 +43,7 @@ class RakSession(
     private val inputOrderingQueue = mutableMapOf<UByte, MutableMap<UInt, Frame>>(
         *(Array(32) { Pair(0u.toUByte(), mutableMapOf()) }),
     )
-    private var lastInputSequence: UInt? = null;
+    private var lastInputSequence: UInt? = null
 
     private val outputOrderIndex = MutableList(32) { 0u }
     private val outputSequenceIndex = MutableList(32) { 0u }
@@ -74,7 +69,7 @@ class RakSession(
     }
 
     val tickJob: Job = scope.launch {
-        while(isActive) {
+        while (isActive) {
             tick()
             delay(10)
         }

@@ -1,6 +1,6 @@
 package org.chorus_oss.raknet.protocol.packets
 
-import io.ktor.utils.io.core.remaining
+import io.ktor.utils.io.core.*
 import kotlinx.io.*
 import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakPacketCodec
@@ -58,6 +58,7 @@ data class OpenConnectionRequest2(
                         stream.readByte() // Not sure what this is for
                         cookie
                     }
+
                     else -> null
                 },
                 address = Address.deserialize(stream),

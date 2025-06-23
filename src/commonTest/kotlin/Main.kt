@@ -1,8 +1,4 @@
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.io.readByteArray
 import org.chorus_oss.raknet.rakClient
 import org.chorus_oss.raknet.rakServer
@@ -34,7 +30,11 @@ class Main {
                 log.info { "Connected on ${connection.address}, with guid: ${connection.guid}" }
 
                 connection.onPacket { stream ->
-                    log.info { "Packet from ${connection.address}: ${stream.readByteArray().toHexString(HexFormat.UpperCase)}" }
+                    log.info {
+                        "Packet from ${connection.address}: ${
+                            stream.readByteArray().toHexString(HexFormat.UpperCase)
+                        }"
+                    }
                 }
 
                 connection.onError { error ->
@@ -54,7 +54,7 @@ class Main {
     fun client() {
         val client = rakClient("127.0.0.1", 19132) {
             infoLogging = true
-            connectRetryMax = 3
+            connectionAttemptMax = 3
         }
 
         client.start(wait = true)
@@ -78,7 +78,11 @@ class Main {
                 log.info { "Connected on ${connection.address}, with guid: ${connection.guid}" }
 
                 connection.onPacket { stream ->
-                    log.info { "Packet from ${connection.address}: ${stream.readByteArray().toHexString(HexFormat.UpperCase)}" }
+                    log.info {
+                        "Packet from ${connection.address}: ${
+                            stream.readByteArray().toHexString(HexFormat.UpperCase)
+                        }"
+                    }
                 }
 
                 connection.onError { error ->

@@ -34,7 +34,7 @@ data class OpenConnectionReply2(
                 guid = stream.readULong(),
                 address = Address.deserialize(stream),
                 mtu = stream.readUShort(),
-                encryption = stream.readUByte() ==  1u.toUByte()
+                encryption = stream.readUByte() == 1u.toUByte()
             )
         }
     }
