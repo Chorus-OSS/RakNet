@@ -15,16 +15,19 @@ import kotlinx.io.readUByte
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Frame
 import org.chorus_oss.raknet.types.*
+import kotlin.coroutines.CoroutineContext
 import kotlin.math.ceil
 import kotlin.time.Duration.Companion.milliseconds
 
 abstract class RakSession(
-    scope: CoroutineScope,
+    val context: CoroutineContext,
     val outbound: SendChannel<Datagram>,
     val address: InetSocketAddress,
     val guid: ULong,
     val mtu: UShort,
-) {
+) : CoroutineScope {
+    override val coroutineContext: CoroutineContext = context
+
     var state: RakSessionState = RakSessionState.Connecting
         protected set
     private var lastUpdate: Instant = Clock.System.now()
@@ -65,7 +68,7 @@ abstract class RakSession(
         return this
     }
 
-    val tickJob: Job = scope.launch {
+    val tickJob: Job = launch {
         while (isActive) {
             tick()
             delay(10)

@@ -2,6 +2,8 @@ package org.chorus_oss.raknet.client
 
 import io.ktor.network.sockets.Datagram
 import io.ktor.network.sockets.InetSocketAddress
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.channels.SendChannel
 import kotlinx.datetime.Clock
 import kotlinx.io.Buffer
 import kotlinx.io.Source
@@ -11,12 +13,33 @@ import org.chorus_oss.raknet.protocol.packets.ConnectionRequestAccepted
 import org.chorus_oss.raknet.protocol.packets.NewIncomingConnection
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.session.RakSession
+import kotlin.coroutines.CoroutineContext
 
 class RakClientSession(
-    client: RakClient,
+    context: CoroutineContext,
+    outbound: SendChannel<Datagram>,
+    address: InetSocketAddress,
+    guid: ULong,
+    mtu: UShort,
 ) : RakSession(
-
+    context + CoroutineName("RakClientSession"),
+    outbound,
+    address,
+    guid,
+    mtu,
 ) {
+    override fun handle(stream: Source) {
+        TODO("Not yet implemented")
+    }
+
+    override fun onConnect() {
+        TODO("Not yet implemented")
+    }
+
+    override fun onDisconnect() {
+        TODO("Not yet implemented")
+    }
+
     private fun sendConnectionRequest() {
         val time = Clock.System.now().toEpochMilliseconds().toULong()
 

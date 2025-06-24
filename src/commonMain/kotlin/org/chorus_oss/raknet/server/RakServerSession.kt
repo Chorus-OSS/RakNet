@@ -1,9 +1,10 @@
 package org.chorus_oss.raknet.server
 
 import io.github.oshai.kotlinlogging.KotlinLogging
-import io.ktor.network.sockets.Datagram
-import io.ktor.network.sockets.InetSocketAddress
-import kotlinx.coroutines.CoroutineScope
+import io.ktor.network.sockets.*
+import io.ktor.utils.io.core.preview
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.datetime.Clock
 import kotlinx.io.Buffer
@@ -20,9 +21,10 @@ import org.chorus_oss.raknet.session.RakSessionState
 import org.chorus_oss.raknet.types.RakPacketID
 import org.chorus_oss.raknet.types.RakPriority
 import org.chorus_oss.raknet.types.RakReliability
+import kotlin.coroutines.CoroutineContext
 
 class RakServerSession(
-    scope: CoroutineScope,
+    context: CoroutineContext,
     outbound: SendChannel<Datagram>,
     address: InetSocketAddress,
     guid: ULong,
@@ -30,65 +32,35 @@ class RakServerSession(
     private val onDisconnect: (RakServerSession) -> Unit,
     private val onConnect: (RakServerSession) -> Unit
 ) : RakSession(
-    scope,
+    context + CoroutineName("RakServerSession"),
     outbound,
     address,
     guid,
     mtu,
 ) {
     override fun handle(stream: Source) {
-        val header = stream.peek().readUByte()
+        stream.preview {
 
-        if (state == RakSessionState.Connecting) {
-            when (header) {
+            when (it.readUByte()) {
                 RakPacketID.DISCONNECT -> {
+                    val connected = state == RakSessionState.Connected
                     state = RakSessionState.Disconnecting
-                    disconnect(send = false, connected = false)
+                    disconnect(send = false, connected = connected)
                     state = RakSessionState.Disconnected
                 }
-
                 RakPacketID.CONNECTION_REQUEST -> {
-                    handleConnectionRequest(stream)
+                    if (state == RakSessionState.Connecting) {
+                        handleConnectionRequest(stream)
+                    } else log.warn { "Unexpected ConnectionRequest" }
                 }
-
+                RakPacketID.CONNECTED_PING -> handleConnectedPing(stream)
                 RakPacketID.NEW_INCOMING_CONNECTION -> {
-                    state = RakSessionState.Connected
-                    onConnect()
+                    if (state == RakSessionState.Connecting) {
+                        state = RakSessionState.Connected
+                        onConnect()
+                    } else log.warn { "Unexpected NewIncomingConnection" }
                 }
-
-                else -> {
-                    val id = header.toString(16).padStart(2, '0').uppercase()
-
-                    log.debug { "Received unknown online packet \"0x$id\" from $address" }
-
-                    onError(Error("Received unknown online packet \"0x$id\" from $address"))
-                }
-            }
-
-            return
-        }
-
-        when (header) {
-            RakPacketID.DISCONNECT -> {
-                state = RakSessionState.Disconnecting
-                disconnect(send = false, connected = true)
-                state = RakSessionState.Disconnected
-            }
-
-            RakPacketID.CONNECTED_PING -> {
-                handleConnectedPing(stream)
-            }
-
-            0xFE.toUByte() -> {
-                onPacket(stream)
-            }
-
-            else -> {
-                val id = header.toString(16).padStart(2, '0').uppercase()
-
-                log.debug { "Received unknown online packet \"0x$id\" from $address" }
-
-                onError(Error("Received unknown online packet \"0x$id\" from $address"))
+                else -> onPacket(stream)
             }
         }
     }

@@ -179,7 +179,7 @@ class RakServer(
                 log.info { "Establishing connection from ${datagram.address} with mtu size of ${packet.mtu}." }
 
                 this.sessions[datagram.address] = RakServerSession(
-                    this,
+                    coroutineContext,
                     this.outbound,
                     datagram.address as InetSocketAddress,
                     packet.client,
