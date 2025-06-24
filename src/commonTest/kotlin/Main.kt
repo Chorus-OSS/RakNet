@@ -53,7 +53,6 @@ class Main {
     @Test
     fun client() {
         val client = rakClient("127.0.0.1", 19132) {
-            infoLogging = true
             connectionAttemptMax = 3
         }
 
@@ -95,9 +94,7 @@ class Main {
             }
         }
 
-        val client = rakClient("127.0.0.1", 19132) {
-            infoLogging = true
-        }
+        val client = rakClient("127.0.0.1", 19132)
 
         server.start()
         client.start(wait = true)

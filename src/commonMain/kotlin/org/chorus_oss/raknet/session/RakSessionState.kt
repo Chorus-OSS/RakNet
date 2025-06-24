@@ -1,6 +1,6 @@
-package org.chorus_oss.raknet.types
+package org.chorus_oss.raknet.session
 
-enum class RakStatus {
+enum class RakSessionState {
     Connecting,
     Connected,
     Disconnecting,

@@ -13,23 +13,20 @@ import kotlinx.io.Source
 import kotlinx.io.readByteArray
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.protocol.packets.*
-import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.protocol.types.Frame
 import org.chorus_oss.raknet.types.*
 import kotlin.math.ceil
 import kotlin.time.Duration.Companion.milliseconds
 
-class RakSession(
+abstract class RakSession(
     scope: CoroutineScope,
     val outbound: SendChannel<Datagram>,
-    val address: SocketAddress,
+    val address: InetSocketAddress,
     val guid: ULong,
     val mtu: UShort,
-    private val onDisconnect: (RakSession) -> Unit,
-    private val onConnect: (RakSession) -> Unit,
 ) {
-    var status: RakStatus = RakStatus.Connecting
-        private set
+    var state: RakSessionState = RakSessionState.Connecting
+        protected set
     private var lastUpdate: Instant = Clock.System.now()
 
     private val queued: Channel<Datagram> = Channel(Channel.UNLIMITED)
@@ -83,7 +80,7 @@ class RakSession(
     }
 
     fun tick() {
-        if (status == RakStatus.Disconnecting || status == RakStatus.Disconnected) {
+        if (state == RakSessionState.Disconnecting || state == RakSessionState.Disconnected) {
             return
         }
 
@@ -133,8 +130,8 @@ class RakSession(
         flush()
     }
 
-    private fun disconnect(send: Boolean, connected: Boolean) {
-        status = RakStatus.Disconnecting
+    protected fun disconnect(send: Boolean, connected: Boolean) {
+        state = RakSessionState.Disconnecting
 
         if (send) {
             val disconnect = Disconnect()
@@ -150,25 +147,22 @@ class RakSession(
             sendFrame(frame, RakPriority.Immediate)
         }
 
-        if (connected) {
-            onDisconnect(this)
-        }
+        if (connected) onDisconnect()
 
-
-        status = RakStatus.Disconnected
+        state = RakSessionState.Disconnected
 
         tickJob.cancel()
     }
 
-    fun incoming(stream: Source) {
+    fun inbound(stream: Source) {
         lastUpdate = Clock.System.now()
 
         val header = stream.peek().readUByte() and 0xF0.toUByte()
 
         when (header) {
-            RakPacketID.ACK -> ack(stream)
-            RakPacketID.NACK -> nack(stream)
-            RakHeader.VALID -> handleIncomingFrameSet(stream)
+            RakPacketID.ACK -> handleACK(stream)
+            RakPacketID.NACK -> handleNACK(stream)
+            RakHeader.VALID -> handleFrameSet(stream)
 
             else -> {
                 val id = header.toString(16).padStart(2, '0').uppercase()
@@ -180,64 +174,13 @@ class RakSession(
         }
     }
 
-    private fun incomingBatch(stream: Source) {
-        val header = stream.peek().readUByte()
+    protected abstract fun handle(stream: Source)
 
-        if (status == RakStatus.Connecting) {
-            when (header) {
-                RakPacketID.DISCONNECT -> {
-                    status = RakStatus.Disconnecting
-                    disconnect(send = false, connected = false)
-                    status = RakStatus.Disconnected
-                }
+    protected abstract fun onConnect()
 
-                RakPacketID.CONNECTION_REQUEST -> {
-                    handleIncomingConnectionRequest(stream)
-                }
+    protected abstract fun onDisconnect()
 
-                RakPacketID.NEW_INCOMING_CONNECTION -> {
-                    status = RakStatus.Connected
-                    onConnect(this)
-                }
-
-                else -> {
-                    val id = header.toString(16).padStart(2, '0').uppercase()
-
-                    log.debug { "Received unknown online packet \"0x$id\" from $address" }
-
-                    onError(Error("Received unknown online packet \"0x$id\" from $address"))
-                }
-            }
-
-            return
-        }
-
-        when (header) {
-            RakPacketID.DISCONNECT -> {
-                status = RakStatus.Disconnecting
-                disconnect(send = false, connected = true)
-                status = RakStatus.Disconnected
-            }
-
-            RakPacketID.CONNECTED_PING -> {
-                handleIncomingConnectedPing(stream)
-            }
-
-            0xFE.toUByte() -> {
-                onPacket(stream)
-            }
-
-            else -> {
-                val id = header.toString(16).padStart(2, '0').uppercase()
-
-                log.debug { "Received unknown online packet \"0x$id\" from $address" }
-
-                onError(Error("Received unknown online packet \"0x$id\" from $address"))
-            }
-        }
-    }
-
-    private fun ack(stream: Source) {
+    private fun handleACK(stream: Source) {
         val ack = Ack.deserialize(stream)
 
         for (sequence in ack.sequences) {
@@ -249,7 +192,7 @@ class RakSession(
         }
     }
 
-    private fun nack(stream: Source) {
+    private fun handleNACK(stream: Source) {
         val nack = NAck.deserialize(stream)
 
         for (sequence in nack.sequences) {
@@ -260,7 +203,7 @@ class RakSession(
         }
     }
 
-    private fun handleIncomingFrameSet(stream: Source) {
+    private fun handleFrameSet(stream: Source) {
         val frameSet = FrameSet.deserialize(stream)
 
         if (receivedFrameSequences.contains(frameSet.sequence)) {
@@ -307,7 +250,7 @@ class RakSession(
 
             inputHighestSequenceIndex[frame.orderChannel.toInt()] = frame.sequenceIndex + 1u
 
-            return incomingBatch(frame.payload)
+            return handle(frame.payload)
         }
 
         if (frame.reliability.isOrdered) {
@@ -315,7 +258,7 @@ class RakSession(
                 inputHighestSequenceIndex[frame.orderChannel.toInt()] = 0u
                 inputOrderIndex[frame.orderChannel.toInt()] = frame.orderIndex + 1u
 
-                incomingBatch(frame.payload)
+                handle(frame.payload)
 
                 var index = inputOrderIndex[frame.orderChannel.toInt()]
                 val outOfOrderQueue = inputOrderingQueue[frame.orderChannel]!!
@@ -325,7 +268,7 @@ class RakSession(
 
                     val f = outOfOrderQueue[index] ?: return
 
-                    incomingBatch(f.payload)
+                    handle(f.payload)
                     outOfOrderQueue.remove(index)
                 }
 
@@ -337,7 +280,7 @@ class RakSession(
                 unordered[frame.orderIndex] = frame
             }
         } else {
-            return incomingBatch(frame.payload)
+            return handle(frame.payload)
         }
     }
 
@@ -441,47 +384,6 @@ class RakSession(
                 address = address
             )
         )
-    }
-
-    private fun handleIncomingConnectionRequest(stream: Source) {
-        val request = ConnectionRequest.deserialize(stream)
-
-        val accepted = ConnectionRequestAccepted(
-            clientAddress = Address.from(address as InetSocketAddress),
-            systemIndex = 0u,
-            systemAddress = emptyList(),
-            requestTimestamp = request.clientTimestamp,
-            timestamp = Clock.System.now().toEpochMilliseconds().toULong()
-        )
-
-        val frame = Frame(
-            reliability = RakReliability.ReliableOrdered,
-            orderChannel = 0u,
-            payload = Buffer().also {
-                ConnectionRequestAccepted.serialize(accepted, it)
-            },
-        )
-
-        sendFrame(frame, RakPriority.Normal)
-    }
-
-    private fun handleIncomingConnectedPing(stream: Source) {
-        val ping = ConnectedPing.deserialize(stream)
-
-        val pong = ConnectedPong(
-            pingTimestamp = ping.timestamp,
-            timestamp = Clock.System.now().toEpochMilliseconds().toULong(),
-        )
-
-        val frame = Frame(
-            reliability = RakReliability.ReliableOrdered,
-            orderChannel = 0u,
-            payload = Buffer().also {
-                ConnectedPong.serialize(pong, it)
-            },
-        )
-
-        sendFrame(frame, RakPriority.Normal)
     }
 
     companion object {

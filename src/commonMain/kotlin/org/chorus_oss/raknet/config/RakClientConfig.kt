@@ -16,8 +16,6 @@ class RakClientConfig : RakSessionConfig() {
     var mtuSizes: List<UShort> = RakConstants.MTU_SIZES
     var internalAddresses: Int = 10
 
-    var infoLogging: Boolean = false
-
     var onConnect: (RakSession) -> Unit = {}
     var onDisconnect: (RakSession) -> Unit = {}
 

@@ -35,7 +35,7 @@ class RakClient(
 
     private val outbound: Channel<Datagram> = Channel(Channel.UNLIMITED)
 
-    private var state: RakOfflineState = RakOfflineState.Handshake1
+    private var state: RakClientState = RakClientState.Handshake1
     private var attempts: Int = 0
     private var cookie: Int? = null
 
@@ -48,16 +48,16 @@ class RakClient(
     private val request: Job = launch(CoroutineName("RakClientRequest"), start = CoroutineStart.LAZY) {
         loop@ while (attempts < config.connectionAttemptMax && isActive) {
             when (state) {
-                RakOfflineState.Handshake1 -> {
-                    sendOpenConnectionRequest1()
+                RakClientState.Handshake1 -> {
+                    openConnectionRequest1()
                     attempts++
                 }
 
-                RakOfflineState.Handshake2 -> {
-                    sendOpenConnectionRequest2()
+                RakClientState.Handshake2 -> {
+                    openConnectionRequest2()
                 }
 
-                RakOfflineState.HandshakeCompleted -> break@loop
+                RakClientState.HandshakeCompleted -> break@loop
             }
             delay(config.connectionAttemptInterval.milliseconds)
         }
@@ -132,7 +132,7 @@ class RakClient(
     fun stop(timeout: Long = 5000) = runBlocking { stopSuspend(timeout) }
 
     private fun inbound(datagram: Datagram) {
-        if (state == RakOfflineState.HandshakeCompleted) {
+        if (state == RakClientState.HandshakeCompleted) {
             // onPacket
             return
         }
@@ -140,8 +140,8 @@ class RakClient(
         datagram.packet.preview {
             val id = it.readUByte()
             when (id) {
-                RakPacketID.OPEN_CONNECTION_REPLY_1 -> onOpenConnectionReply1(datagram.packet)
-                RakPacketID.OPEN_CONNECTION_REPLY_2 -> onOpenConnectionReply2(datagram.packet)
+                RakPacketID.OPEN_CONNECTION_REPLY_1 -> openConnectionReply1(datagram.packet)
+                RakPacketID.OPEN_CONNECTION_REPLY_2 -> openConnectionReply2(datagram.packet)
                 RakPacketID.INCOMPATIBLE_PROTOCOL_VERSION -> {
                     log.warn { "RakClient connection failed due to incompatible protocol version" }
                     stop()
@@ -158,7 +158,7 @@ class RakClient(
                 }
 
                 RakPacketID.IP_RECENTLY_CONNECTED -> {
-                    log.warn { "RakClient connection failed because the IP recent connected" }
+                    log.warn { "RakClient connection failed because this IP recently connected" }
                     stop()
                 }
             }
@@ -170,7 +170,7 @@ class RakClient(
         request.cancel()
     }
 
-    private fun sendOpenConnectionRequest1() {
+    private fun openConnectionRequest1() {
         val mtu = config.mtuSizes[(attempts / 4).coerceAtLeast(config.mtuSizes.size - 1)]
         val magic = config.magic
         val protocol = config.protocol
@@ -184,17 +184,17 @@ class RakClient(
         )
     }
 
-    private fun onOpenConnectionReply1(stream: Source) {
+    private fun openConnectionReply1(stream: Source) {
         val packet = OpenConnectionReply1.deserialize(stream)
 
         config.mtu = packet.mtu
         config.serverGUID = packet.guid
 
-        state = RakOfflineState.Handshake2
-        sendOpenConnectionRequest2()
+        state = RakClientState.Handshake2
+        openConnectionRequest2()
     }
 
-    private fun sendOpenConnectionRequest2() {
+    private fun openConnectionRequest2() {
         val mtu = config.mtu
         val magic = config.magic
         val guid = config.guid
@@ -208,7 +208,7 @@ class RakClient(
         )
     }
 
-    private fun onOpenConnectionReply2(stream: Source) {
+    private fun openConnectionReply2(stream: Source) {
         val packet = OpenConnectionReply2.deserialize(stream)
 
         if (packet.encryption) {
@@ -217,7 +217,7 @@ class RakClient(
         } else {
             config.mtu = packet.mtu
 
-            state = RakOfflineState.HandshakeCompleted
+            state = RakClientState.HandshakeCompleted
             onConnect()
         }
     }

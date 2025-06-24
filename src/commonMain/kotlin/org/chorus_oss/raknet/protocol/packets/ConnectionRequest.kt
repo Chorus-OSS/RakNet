@@ -7,6 +7,7 @@ import org.chorus_oss.raknet.types.RakPacketID
 data class ConnectionRequest(
     val clientGuid: ULong,
     val clientTimestamp: ULong,
+    val security: Boolean = false,
 ) {
     companion object : RakPacketCodec<ConnectionRequest> {
         override val id: UByte
@@ -16,6 +17,7 @@ data class ConnectionRequest(
             stream.writeUByte(id) // Packet ID
             stream.writeULong(value.clientGuid)
             stream.writeULong(value.clientTimestamp)
+            stream.writeByte(if (value.security) 1 else 0)
         }
 
         override fun deserialize(stream: Source): ConnectionRequest {
@@ -23,6 +25,7 @@ data class ConnectionRequest(
             return ConnectionRequest(
                 clientGuid = stream.readULong(),
                 clientTimestamp = stream.readULong(),
+                security = stream.readByte() == 1.toByte()
             )
         }
     }

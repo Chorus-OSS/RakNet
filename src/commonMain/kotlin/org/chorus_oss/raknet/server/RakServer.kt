@@ -23,7 +23,7 @@ class RakServer(
 ) : CoroutineScope {
     override val coroutineContext: CoroutineContext = Dispatchers.IO + SupervisorJob() + CoroutineName("RakServer")
 
-    private val sessions: MutableMap<SocketAddress, RakSession> = mutableMapOf()
+    private val sessions: MutableMap<SocketAddress, RakServerSession> = mutableMapOf()
 
     private val outbound: Channel<Datagram> = Channel(Channel.UNLIMITED)
 
@@ -85,7 +85,7 @@ class RakServer(
         }
 
         if (!offline) {
-            sessions[datagram.address]?.incoming(datagram.packet)
+            sessions[datagram.address]?.inbound(datagram.packet)
         }
     }
 
@@ -178,10 +178,10 @@ class RakServer(
 
                 log.info { "Establishing connection from ${datagram.address} with mtu size of ${packet.mtu}." }
 
-                this.sessions[datagram.address] = RakSession(
+                this.sessions[datagram.address] = RakServerSession(
                     this,
                     this.outbound,
-                    datagram.address,
+                    datagram.address as InetSocketAddress,
                     packet.client,
                     packet.mtu,
                     ::onDisconnect,
