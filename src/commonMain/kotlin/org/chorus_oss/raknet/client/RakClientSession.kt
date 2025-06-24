@@ -1,17 +1,24 @@
 package org.chorus_oss.raknet.client
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.sockets.*
+import io.ktor.utils.io.core.preview
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.datetime.Clock
 import kotlinx.io.Buffer
 import kotlinx.io.Source
 import kotlinx.io.bytestring.ByteString
+import kotlinx.io.readUByte
 import org.chorus_oss.raknet.protocol.packets.ConnectionRequest
 import org.chorus_oss.raknet.protocol.packets.ConnectionRequestAccepted
 import org.chorus_oss.raknet.protocol.packets.NewIncomingConnection
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.session.RakSession
+import org.chorus_oss.raknet.session.RakSessionState
+import org.chorus_oss.raknet.types.RakPacketID
+import org.chorus_oss.raknet.types.RakPriority
+import org.chorus_oss.raknet.types.RakReliability
 import kotlin.coroutines.CoroutineContext
 
 class RakClientSession(
@@ -27,33 +34,50 @@ class RakClientSession(
     guid,
     mtu,
 ) {
+    init {
+        sendConnectionRequest()
+    }
+
     override fun handle(stream: Source) {
-        TODO("Not yet implemented")
+        stream.preview {
+            when (it.readUByte()) {
+                RakPacketID.CONNECTION_REQUEST_ACCEPTED -> handleConnectionRequestAccepted(stream)
+                RakPacketID.CONNECTION_REQUEST_FAILED -> {
+                    state = RakSessionState.Disconnecting
+                    disconnect(send = false, connected = false)
+                    state = RakSessionState.Disconnected
+                    log.warn { "Connection request failed" }
+                }
+            }
+        }
     }
 
     override fun onConnect() {
-        TODO("Not yet implemented")
+        log.info { "Connected" }
     }
 
     override fun onDisconnect() {
-        TODO("Not yet implemented")
+        log.info { "Disconnected" }
     }
 
     private fun sendConnectionRequest() {
         val time = Clock.System.now().toEpochMilliseconds().toULong()
 
         val packet = ConnectionRequest(guid, time)
-        outbound.trySend(
-            Datagram(
-                packet = Buffer().also { ConnectionRequest.serialize(packet, it) },
-                address = address
-            )
+        send(
+            Buffer().also { ConnectionRequest.serialize(packet, it) },
+            RakReliability.ReliableOrdered,
+            RakPriority.Immediate,
         )
     }
 
-    private fun onConnectionRequestAccepted(stream: Source) {
+    private fun handleConnectionRequestAccepted(stream: Source) {
         val packet = ConnectionRequestAccepted.deserialize(stream)
 
+        log.info { "ConnectionRequestAccepted" }
+
+        state = RakSessionState.Connected
+        onConnect()
         sendNewIncomingConnection(packet.timestamp)
     }
 
@@ -64,11 +88,14 @@ class RakClientSession(
             time,
             Clock.System.now().toEpochMilliseconds().toULong()
         )
-        outbound.trySend(
-            Datagram(
-                packet = Buffer().also { NewIncomingConnection.serialize(packet, it) },
-                address = address
-            )
+        send(
+            Buffer().also { NewIncomingConnection.serialize(packet, it) },
+            RakReliability.ReliableOrdered,
+            RakPriority.Immediate,
         )
+    }
+
+    companion object {
+        val log = KotlinLogging.logger { }
     }
 }

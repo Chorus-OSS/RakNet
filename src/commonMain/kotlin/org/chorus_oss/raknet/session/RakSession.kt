@@ -389,6 +389,16 @@ abstract class RakSession(
         )
     }
 
+    fun send(packet: Buffer, reliability: RakReliability, priority: RakPriority) {
+        sendFrame(
+            Frame(
+                payload = packet,
+                reliability = reliability,
+            ),
+            priority
+        )
+    }
+
     companion object {
         private val log = KotlinLogging.logger {}
     }

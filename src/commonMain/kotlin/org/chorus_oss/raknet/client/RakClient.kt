@@ -39,6 +39,8 @@ class RakClient(
     private var attempts: Int = 0
     private var cookie: Int? = null
 
+    private var session: RakClientSession? = null
+
     private val timeout: Job = launch(CoroutineName("RakClientTimeout"), start = CoroutineStart.LAZY) {
         delay(config.connectionAttemptTimeout.milliseconds)
         log.warn { "RakClient connection timed out after ${config.timeout}ms" }
@@ -133,7 +135,7 @@ class RakClient(
 
     private fun handle(datagram: Datagram) {
         if (state == RakClientState.HandshakeCompleted) {
-            // onPacket
+            session?.inbound(datagram.packet)
             return
         }
 
@@ -168,6 +170,14 @@ class RakClient(
     private fun onConnect() {
         timeout.cancel()
         request.cancel()
+
+        session = RakClientSession(
+            coroutineContext,
+            outbound,
+            remote,
+            config.guid,
+            config.mtu,
+        )
     }
 
     private fun sendOpenConnectionRequest1() {

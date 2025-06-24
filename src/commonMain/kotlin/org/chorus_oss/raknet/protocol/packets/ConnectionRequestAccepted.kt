@@ -31,7 +31,7 @@ data class ConnectionRequestAccepted(
             return ConnectionRequestAccepted(
                 clientAddress = Address.deserialize(stream),
                 systemIndex = stream.readUShort(),
-                systemAddresses = generateSequence { if (stream.remaining >= 16) Address.deserialize(stream) else null }.toList(),
+                systemAddresses = generateSequence { if (stream.remaining > 16) Address.deserialize(stream) else null }.toList(),
                 requestTimestamp = stream.readULong(),
                 timestamp = stream.readULong()
             )
