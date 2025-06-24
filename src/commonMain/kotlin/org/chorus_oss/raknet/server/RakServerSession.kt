@@ -66,13 +66,9 @@ class RakServerSession(
         }
     }
 
-    override fun onConnect() {
-        onConnect.invoke(this)
-    }
+    override fun onConnect() = onConnect(this)
 
-    override fun onDisconnect() {
-        onDisconnect.invoke(this)
-    }
+    override fun onDisconnect() = onDisconnect(this)
 
     private fun handleConnectionRequest(stream: Source) {
         val request = ConnectionRequest.deserialize(stream)

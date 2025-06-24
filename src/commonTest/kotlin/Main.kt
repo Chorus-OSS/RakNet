@@ -74,7 +74,7 @@ class Main {
             ).toByteString()
 
             onConnect { connection ->
-                log.info { "Connected on ${connection.address}, with guid: ${connection.guid}" }
+                log.info { "Connected to ${connection.address}, with guid: ${connection.guid}" }
 
                 connection.onPacket { stream ->
                     log.info {
@@ -90,11 +90,19 @@ class Main {
             }
 
             onDisconnect { connection ->
-                log.info { "Disconnected on ${connection.address}" }
+                log.info { "Disconnected from ${connection.address}" }
             }
         }
 
-        val client = rakClient("127.0.0.1", 19132)
+        val client = rakClient("127.0.0.1", 19132) {
+            onConnect { connection ->
+                log.info { "Connected to ${connection.address}, with guid: ${connection.guid}" }
+            }
+
+            onDisconnect { connection ->
+                log.info { "Disconnected from ${connection.address}" }
+            }
+        }
 
         server.start()
         client.start(wait = true)

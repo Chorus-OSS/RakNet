@@ -15,6 +15,7 @@ import org.chorus_oss.raknet.protocol.packets.OpenConnectionReply2
 import org.chorus_oss.raknet.protocol.packets.OpenConnectionRequest1
 import org.chorus_oss.raknet.protocol.packets.OpenConnectionRequest2
 import org.chorus_oss.raknet.protocol.types.Address
+import org.chorus_oss.raknet.session.RakSession
 import org.chorus_oss.raknet.types.RakPacketID
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration.Companion.milliseconds
@@ -167,9 +168,11 @@ class RakClient(
         }
     }
 
-    private fun onConnect() {
+    private fun onSuccess() {
         timeout.cancel()
         request.cancel()
+
+        log.info { "Establishing connection to $remote with mtu size of ${config.mtu}" }
 
         session = RakClientSession(
             coroutineContext,
@@ -177,6 +180,8 @@ class RakClient(
             remote,
             config.guid,
             config.mtu,
+            ::onConnect,
+            ::onDisconnect,
         )
     }
 
@@ -228,8 +233,17 @@ class RakClient(
             config.mtu = packet.mtu
 
             state = RakClientState.HandshakeCompleted
-            onConnect()
+            onSuccess()
         }
+    }
+
+    private fun onConnect(session: RakSession) {
+        config.onConnect(session)
+    }
+
+    private fun onDisconnect(session: RakSession) {
+        config.onDisconnect(session)
+        stop()
     }
 
     companion object {

@@ -20,16 +20,15 @@ import kotlin.math.ceil
 import kotlin.time.Duration.Companion.milliseconds
 
 abstract class RakSession(
-    val context: CoroutineContext,
-    val outbound: SendChannel<Datagram>,
+    context: CoroutineContext,
+    private val outbound: SendChannel<Datagram>,
     val address: InetSocketAddress,
     val guid: ULong,
     val mtu: UShort,
 ) : CoroutineScope {
     override val coroutineContext: CoroutineContext = context
 
-    var state: RakSessionState = RakSessionState.Connecting
-        protected set
+    protected var state: RakSessionState = RakSessionState.Connecting
     private var lastUpdate: Instant = Clock.System.now()
 
     private val queued: Channel<Datagram> = Channel(Channel.UNLIMITED)
@@ -68,7 +67,7 @@ abstract class RakSession(
         return this
     }
 
-    val tickJob: Job = launch {
+    private val tick: Job = launch {
         while (isActive) {
             tick()
             delay(10)
@@ -82,7 +81,7 @@ abstract class RakSession(
         }
     }
 
-    fun tick() {
+    private fun tick() {
         if (state == RakSessionState.Disconnecting || state == RakSessionState.Disconnected) {
             return
         }
@@ -154,7 +153,7 @@ abstract class RakSession(
 
         state = RakSessionState.Disconnected
 
-        tickJob.cancel()
+        tick.cancel()
     }
 
     fun inbound(stream: Source) {

@@ -2,6 +2,7 @@ package org.chorus_oss.raknet.client
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.sockets.*
+import io.ktor.util.reflect.instanceOf
 import io.ktor.utils.io.core.preview
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.channels.SendChannel
@@ -27,6 +28,8 @@ class RakClientSession(
     address: InetSocketAddress,
     guid: ULong,
     mtu: UShort,
+    private val onConnect: (RakSession) -> Unit,
+    private val onDisconnect: (RakSession) -> Unit,
 ) : RakSession(
     context + CoroutineName("RakClientSession"),
     outbound,
@@ -52,13 +55,9 @@ class RakClientSession(
         }
     }
 
-    override fun onConnect() {
-        log.info { "Connected" }
-    }
+    override fun onConnect() = onConnect(this)
 
-    override fun onDisconnect() {
-        log.info { "Disconnected" }
-    }
+    override fun onDisconnect() = onDisconnect(this)
 
     private fun sendConnectionRequest() {
         val time = Clock.System.now().toEpochMilliseconds().toULong()
@@ -73,8 +72,6 @@ class RakClientSession(
 
     private fun handleConnectionRequestAccepted(stream: Source) {
         val packet = ConnectionRequestAccepted.deserialize(stream)
-
-        log.info { "ConnectionRequestAccepted" }
 
         state = RakSessionState.Connected
         onConnect()
