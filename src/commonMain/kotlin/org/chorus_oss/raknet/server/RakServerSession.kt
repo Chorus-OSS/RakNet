@@ -2,9 +2,8 @@ package org.chorus_oss.raknet.server
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.sockets.*
-import io.ktor.utils.io.core.preview
+import io.ktor.utils.io.core.*
 import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.datetime.Clock
 import kotlinx.io.Buffer
@@ -40,7 +39,6 @@ class RakServerSession(
 ) {
     override fun handle(stream: Source) {
         stream.preview {
-
             when (it.readUByte()) {
                 RakPacketID.DISCONNECT -> {
                     val connected = state == RakSessionState.Connected
@@ -48,11 +46,13 @@ class RakServerSession(
                     disconnect(send = false, connected = connected)
                     state = RakSessionState.Disconnected
                 }
+
                 RakPacketID.CONNECTION_REQUEST -> {
                     if (state == RakSessionState.Connecting) {
                         handleConnectionRequest(stream)
                     } else log.warn { "Unexpected ConnectionRequest" }
                 }
+
                 RakPacketID.CONNECTED_PING -> handleConnectedPing(stream)
                 RakPacketID.NEW_INCOMING_CONNECTION -> {
                     if (state == RakSessionState.Connecting) {
@@ -60,6 +60,7 @@ class RakServerSession(
                         onConnect()
                     } else log.warn { "Unexpected NewIncomingConnection" }
                 }
+
                 else -> onPacket(stream)
             }
         }

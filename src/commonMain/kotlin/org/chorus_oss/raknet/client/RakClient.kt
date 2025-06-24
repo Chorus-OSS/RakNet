@@ -49,12 +49,12 @@ class RakClient(
         loop@ while (attempts < config.connectionAttemptMax && isActive) {
             when (state) {
                 RakClientState.Handshake1 -> {
-                    openConnectionRequest1()
+                    sendOpenConnectionRequest1()
                     attempts++
                 }
 
                 RakClientState.Handshake2 -> {
-                    openConnectionRequest2()
+                    sendOpenConnectionRequest2()
                 }
 
                 RakClientState.HandshakeCompleted -> break@loop
@@ -79,7 +79,7 @@ class RakClient(
                     launch(CoroutineName("RakClientInbound")) {
                         while (isActive) {
                             val datagram = socket.incoming.receiveCatching().getOrNull() ?: break
-                            inbound(datagram)
+                            handle(datagram)
                         }
                     }
 
@@ -131,7 +131,7 @@ class RakClient(
 
     fun stop(timeout: Long = 5000) = runBlocking { stopSuspend(timeout) }
 
-    private fun inbound(datagram: Datagram) {
+    private fun handle(datagram: Datagram) {
         if (state == RakClientState.HandshakeCompleted) {
             // onPacket
             return
@@ -140,8 +140,8 @@ class RakClient(
         datagram.packet.preview {
             val id = it.readUByte()
             when (id) {
-                RakPacketID.OPEN_CONNECTION_REPLY_1 -> openConnectionReply1(datagram.packet)
-                RakPacketID.OPEN_CONNECTION_REPLY_2 -> openConnectionReply2(datagram.packet)
+                RakPacketID.OPEN_CONNECTION_REPLY_1 -> handleOpenConnectionReply1(datagram.packet)
+                RakPacketID.OPEN_CONNECTION_REPLY_2 -> handleOpenConnectionReply2(datagram.packet)
                 RakPacketID.INCOMPATIBLE_PROTOCOL_VERSION -> {
                     log.warn { "RakClient connection failed due to incompatible protocol version" }
                     stop()
@@ -170,7 +170,7 @@ class RakClient(
         request.cancel()
     }
 
-    private fun openConnectionRequest1() {
+    private fun sendOpenConnectionRequest1() {
         val mtu = config.mtuSizes[(attempts / 4).coerceAtLeast(config.mtuSizes.size - 1)]
         val magic = config.magic
         val protocol = config.protocol
@@ -184,17 +184,17 @@ class RakClient(
         )
     }
 
-    private fun openConnectionReply1(stream: Source) {
+    private fun handleOpenConnectionReply1(stream: Source) {
         val packet = OpenConnectionReply1.deserialize(stream)
 
         config.mtu = packet.mtu
         config.serverGUID = packet.guid
 
         state = RakClientState.Handshake2
-        openConnectionRequest2()
+        sendOpenConnectionRequest2()
     }
 
-    private fun openConnectionRequest2() {
+    private fun sendOpenConnectionRequest2() {
         val mtu = config.mtu
         val magic = config.magic
         val guid = config.guid
@@ -208,7 +208,7 @@ class RakClient(
         )
     }
 
-    private fun openConnectionReply2(stream: Source) {
+    private fun handleOpenConnectionReply2(stream: Source) {
         val packet = OpenConnectionReply2.deserialize(stream)
 
         if (packet.encryption) {
