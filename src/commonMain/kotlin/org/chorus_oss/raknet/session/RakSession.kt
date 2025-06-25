@@ -310,7 +310,7 @@ abstract class RakSession(
         }
     }
 
-    fun sendFrame(frame: Frame, priority: RakPriority) {
+    private fun sendFrame(frame: Frame, priority: RakPriority) {
         if (frame.reliability.isSequenced) {
             frame.orderIndex = outputOrderIndex[frame.orderChannel.toInt()]
             frame.sequenceIndex = outputSequenceIndex[frame.orderChannel.toInt()]++
@@ -364,7 +364,7 @@ abstract class RakSession(
         }
     }
 
-    fun sendQueue(amount: Int) {
+    private fun sendQueue(amount: Int) {
         if (outputFrames.isEmpty()) return
 
         val frameSet = FrameSet(

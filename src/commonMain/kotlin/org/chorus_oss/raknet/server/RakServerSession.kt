@@ -81,15 +81,11 @@ class RakServerSession(
             timestamp = Clock.System.now().toEpochMilliseconds().toULong()
         )
 
-        val frame = Frame(
-            reliability = RakReliability.ReliableOrdered,
-            orderChannel = 0u,
-            payload = Buffer().also {
-                ConnectionRequestAccepted.serialize(accepted, it)
-            },
+        send(
+            Buffer().also { ConnectionRequestAccepted.serialize(accepted, it) },
+            RakReliability.ReliableOrdered,
+            RakPriority.Normal,
         )
-
-        sendFrame(frame, RakPriority.Normal)
     }
 
     private fun handleConnectedPing(stream: Source) {
@@ -100,15 +96,11 @@ class RakServerSession(
             timestamp = Clock.System.now().toEpochMilliseconds().toULong(),
         )
 
-        val frame = Frame(
-            reliability = RakReliability.ReliableOrdered,
-            orderChannel = 0u,
-            payload = Buffer().also {
-                ConnectedPong.serialize(pong, it)
-            },
+        send(
+            Buffer().also { ConnectedPong.serialize(pong, it) },
+            RakReliability.ReliableOrdered,
+            RakPriority.Normal,
         )
-
-        sendFrame(frame, RakPriority.Normal)
     }
 
     companion object {
