@@ -1,8 +1,10 @@
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.io.readByteArray
+import kotlinx.io.*
 import org.chorus_oss.raknet.rakClient
 import org.chorus_oss.raknet.rakServer
 import org.chorus_oss.raknet.server.RakServer
+import org.chorus_oss.raknet.types.RakPriority
+import org.chorus_oss.raknet.types.RakReliability
 import kotlin.test.Test
 
 @OptIn(ExperimentalStdlibApi::class)
@@ -79,8 +81,29 @@ class Main {
                 connection.onPacket { stream ->
                     log.info {
                         "Packet from ${connection.address}: ${
-                            stream.readByteArray().toHexString(HexFormat.UpperCase)
+                            stream.peek().readByteArray().toHexString(HexFormat.UpperCase)
                         }"
+                    }
+
+                    val id = stream.readUByte()
+                    when (id.toUInt()) {
+                        0xFEu -> {
+                            val reply = stream.readUByte() == 0x01u.toUByte()
+                            val message = stream.readString()
+
+                            log.info { "Message from ${connection.address}: $message ${if (reply) "(reply)" else ""}" }
+
+                            if (!reply) {
+                                val packet = Buffer().apply {
+                                    writeUByte(0xFEu)
+                                    writeUByte(0x01u)
+                                    writeString("Hey!")
+                                }
+
+                                connection.send(packet, RakReliability.ReliableOrdered, RakPriority.Normal)
+                            }
+                        }
+                        else -> Unit
                     }
                 }
 
@@ -97,6 +120,33 @@ class Main {
         val client = rakClient("127.0.0.1", 19132) {
             onConnect { connection ->
                 log.info { "Connected to ${connection.address}, with guid: ${connection.guid}" }
+
+                connection.onPacket { stream ->
+                    log.info {
+                        "Packet from ${connection.address}: ${
+                            stream.peek().readByteArray().toHexString(HexFormat.UpperCase)
+                        }"
+                    }
+
+                    val id = stream.readUByte()
+                    when (id.toUInt()) {
+                        0xFEu -> {
+                            val reply = stream.readUByte() == 0x01u.toUByte()
+                            val message = stream.readString()
+
+                            log.info { "Message from ${connection.address}: $message ${if (reply) "(reply)" else ""}" }
+                        }
+                        else -> Unit
+                    }
+                }
+
+                val packet = Buffer().apply {
+                    writeUByte(0xFEu)
+                    writeUByte(0x00u)
+                    writeString("Hello?")
+                }
+
+                connection.send(packet, RakReliability.ReliableOrdered, RakPriority.Normal)
             }
 
             onDisconnect { connection ->

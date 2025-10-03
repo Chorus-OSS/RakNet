@@ -51,6 +51,7 @@ class RakClientSession(
                     state = RakSessionState.Disconnected
                     log.warn { "Connection request failed" }
                 }
+                else -> onPacket(stream)
             }
         }
     }
@@ -74,8 +75,8 @@ class RakClientSession(
         val packet = ConnectionRequestAccepted.deserialize(stream)
 
         state = RakSessionState.Connected
-        onConnect()
         sendNewIncomingConnection(packet.timestamp)
+        onConnect()
     }
 
     private fun sendNewIncomingConnection(time: ULong) {
