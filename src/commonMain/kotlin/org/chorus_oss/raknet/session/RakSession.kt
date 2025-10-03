@@ -287,26 +287,28 @@ abstract class RakSession(
     }
 
     private fun handleFragment(frame: Frame) {
-        if (fragmentsQueue.contains(frame.splitID)) {
-            val fragment = fragmentsQueue[frame.splitID] ?: return
+        val fragment = fragmentsQueue.getOrPut(frame.splitID) { mutableMapOf() }
 
-            fragment[frame.splitIndex] = frame
+        fragment[frame.splitIndex] = frame
 
-            if (fragment.size.toUInt() == frame.splitSize) {
-                val stream = Buffer()
+        if (fragment.size.toUInt() == frame.splitSize) {
+            val stream = Buffer()
 
-                for (f in fragment.values) {
-                    stream.write(f.payload.readByteArray())
-                }
-
-                val nFrame = frame.copy(payload = stream)
-
-                fragmentsQueue.remove(frame.splitID)
-
-                return handleFrame(nFrame)
-            } else {
-                fragmentsQueue[frame.splitID] = mutableMapOf(Pair(frame.splitIndex, frame))
+            for (i in 0u until frame.splitSize) {
+                val f = fragment[i] ?: return
+                stream.write(f.payload.readByteArray())
             }
+
+            val nFrame = frame.copy(
+                payload = stream,
+                splitSize = 0u,
+                splitID = 0u,
+                splitIndex = 0u,
+            )
+
+            fragmentsQueue.remove(frame.splitID)
+
+            return handleFrame(nFrame)
         }
     }
 
@@ -327,9 +329,9 @@ abstract class RakSession(
         if (frame.payload.remaining > maxSize.toLong()) {
             val splitId = (outputSplitIndex++ % 65536u).toUShort()
 
-            for (i in 0 until frame.payload.remaining / maxSize.toInt()) {
+            for (i in 0 until splitSize.toInt()) {
                 val subBuf = Buffer()
-                frame.payload.readTo(subBuf, maxSize.toLong())
+                frame.payload.readAtMostTo(subBuf, maxSize.toLong())
 
                 val nFrame = frame.copy(
                     payload = subBuf,
