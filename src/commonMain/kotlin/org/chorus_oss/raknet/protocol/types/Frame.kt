@@ -3,6 +3,7 @@ package org.chorus_oss.raknet.protocol.types
 import io.ktor.utils.io.core.*
 import kotlinx.io.*
 import kotlinx.io.Buffer
+import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakCodec
 import org.chorus_oss.raknet.types.RakHeader
 import org.chorus_oss.raknet.types.RakReliability
@@ -10,7 +11,7 @@ import kotlin.math.ceil
 
 data class Frame(
     var reliability: RakReliability,
-    var payload: Buffer,
+    var payload: ByteString,
     var reliableIndex: UInt = 0u,
     var sequenceIndex: UInt = 0u,
     var orderIndex: UInt = 0u,
@@ -27,7 +28,7 @@ data class Frame(
             var length: Long = 0
 
             length += 3
-            length += payload.remaining
+            length += payload.size
 
             if (reliability.isReliable) {
                 length += 3
@@ -78,31 +79,31 @@ data class Frame(
                     stream.writeUInt(frame.splitIndex)
                 }
 
-                stream.write(frame.payload, frame.payload.size)
+                stream.write(frame.payload)
             }
         }
 
         override fun deserialize(stream: Source): List<Frame> {
             val frames = mutableListOf<Frame>()
 
-            do {
+            while (!stream.endOfInput) {
                 val header = stream.readUByte()
                 val reliability = RakReliability.entries[((header.toUInt() and 0xE0u) shr 5).toInt()]
                 val split = (header and RakHeader.SPLIT) != 0u.toUByte()
 
-                val length = ceil(stream.readUShort().toFloat() / 8f).toLong()
+                val length = ceil(stream.readUShort().toFloat() / 8f).toInt()
 
-                var reliableIndex: UInt = 0u
+                var reliableIndex = 0u
                 if (reliability.isReliable) {
                     reliableIndex = UMedium.deserialize(stream)
                 }
 
-                var sequenceIndex: UInt = 0u
+                var sequenceIndex = 0u
                 if (reliability.isSequenced) {
                     sequenceIndex = UMedium.deserialize(stream)
                 }
 
-                var orderIndex: UInt = 0u
+                var orderIndex = 0u
                 var orderChannel: UByte = 0u
                 if (reliability.isOrdered) {
                     orderIndex = UMedium.deserialize(stream)
@@ -118,8 +119,7 @@ data class Frame(
                     splitIndex = stream.readUInt()
                 }
 
-                val payload = Buffer()
-                stream.readTo(payload, length)
+                val payload = stream.readByteString(length)
 
                 frames.add(
                     Frame(
@@ -134,8 +134,7 @@ data class Frame(
                         splitIndex,
                     )
                 )
-
-            } while (!stream.endOfInput)
+            }
 
             return frames
         }

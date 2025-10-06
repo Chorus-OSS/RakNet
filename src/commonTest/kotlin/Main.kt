@@ -1,5 +1,6 @@
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.io.*
+import kotlinx.io.files.Path
 import org.chorus_oss.raknet.rakClient
 import org.chorus_oss.raknet.rakServer
 import org.chorus_oss.raknet.server.RakServer
@@ -78,12 +79,14 @@ class Main {
             onConnect { connection ->
                 log.info { "Connected to ${connection.address}, with guid: ${connection.guid}" }
 
+                var burstReceivedCount = 0
+
                 connection.onPacket { stream ->
-                    log.info {
-                        "Packet from ${connection.address}: ${
-                            stream.peek().readByteArray().toHexString(HexFormat.UpperCase)
-                        }"
-                    }
+//                    log.info {
+//                        "Packet from ${connection.address}: ${
+//                            stream.peek().readByteArray().toHexString(HexFormat.UpperCase)
+//                        }"
+//                    }
 
                     val id = stream.readUByte()
                     when (id.toUInt()) {
@@ -98,10 +101,15 @@ class Main {
                                     writeUByte(0xFEu)
                                     writeUByte(0x01u)
                                     writeString("Hey!")
-                                }
+                                }.readByteString()
 
                                 connection.send(packet, RakReliability.ReliableOrdered, RakPriority.Normal)
                             }
+                        }
+                        0xFFu -> {
+                            log.info { "Received burst: $burstReceivedCount" }
+
+                            burstReceivedCount++
                         }
                         else -> Unit
                     }
@@ -122,11 +130,11 @@ class Main {
                 log.info { "Connected to ${connection.address}, with guid: ${connection.guid}" }
 
                 connection.onPacket { stream ->
-                    log.info {
-                        "Packet from ${connection.address}: ${
-                            stream.peek().readByteArray().toHexString(HexFormat.UpperCase)
-                        }"
-                    }
+//                    log.info {
+//                        "Packet from ${connection.address}: ${
+//                            stream.peek().readByteArray().toHexString(HexFormat.UpperCase)
+//                        }"
+//                    }
 
                     val id = stream.readUByte()
                     when (id.toUInt()) {
@@ -135,6 +143,17 @@ class Main {
                             val message = stream.readString()
 
                             log.info { "Message from ${connection.address}: $message ${if (reply) "(reply)" else ""}" }
+
+                            log.info { "Starting burst" }
+
+                            val packet = Buffer().apply {
+                                writeUByte(0xFFu)
+                                write(ByteArray(32767) { 1 })
+                            }.readByteString()
+
+                            repeat(8) {
+                                connection.send(packet, RakReliability.ReliableOrdered, RakPriority.Normal)
+                            }
                         }
                         else -> Unit
                     }
@@ -144,7 +163,7 @@ class Main {
                     writeUByte(0xFEu)
                     writeUByte(0x00u)
                     writeString("Hello?")
-                }
+                }.readByteString()
 
                 connection.send(packet, RakReliability.ReliableOrdered, RakPriority.Normal)
             }

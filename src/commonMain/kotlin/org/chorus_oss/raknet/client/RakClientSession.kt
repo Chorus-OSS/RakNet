@@ -10,6 +10,7 @@ import kotlinx.datetime.Clock
 import kotlinx.io.Buffer
 import kotlinx.io.Source
 import kotlinx.io.bytestring.ByteString
+import kotlinx.io.readByteString
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.protocol.packets.ConnectionRequest
 import org.chorus_oss.raknet.protocol.packets.ConnectionRequestAccepted
@@ -65,7 +66,7 @@ class RakClientSession(
 
         val packet = ConnectionRequest(guid, time)
         send(
-            Buffer().also { ConnectionRequest.serialize(packet, it) },
+            Buffer().also { ConnectionRequest.serialize(packet, it) }.readByteString(),
             RakReliability.ReliableOrdered,
             RakPriority.Immediate,
         )
@@ -87,7 +88,7 @@ class RakClientSession(
             Clock.System.now().toEpochMilliseconds().toULong()
         )
         send(
-            Buffer().also { NewIncomingConnection.serialize(packet, it) },
+            Buffer().also { NewIncomingConnection.serialize(packet, it) }.readByteString(),
             RakReliability.ReliableOrdered,
             RakPriority.Immediate,
         )

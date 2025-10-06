@@ -8,6 +8,7 @@ import kotlinx.coroutines.channels.SendChannel
 import kotlinx.datetime.Clock
 import kotlinx.io.Buffer
 import kotlinx.io.Source
+import kotlinx.io.readByteString
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.protocol.packets.ConnectedPing
 import org.chorus_oss.raknet.protocol.packets.ConnectedPong
@@ -82,7 +83,7 @@ class RakServerSession(
         )
 
         send(
-            Buffer().also { ConnectionRequestAccepted.serialize(accepted, it) },
+            Buffer().also { ConnectionRequestAccepted.serialize(accepted, it) }.readByteString(),
             RakReliability.ReliableOrdered,
             RakPriority.Normal,
         )
@@ -97,7 +98,7 @@ class RakServerSession(
         )
 
         send(
-            Buffer().also { ConnectedPong.serialize(pong, it) },
+            Buffer().also { ConnectedPong.serialize(pong, it) }.readByteString(),
             RakReliability.ReliableOrdered,
             RakPriority.Normal,
         )

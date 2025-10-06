@@ -25,7 +25,7 @@ kotlin {
     // Open an issue if you want a platform to be added.
 
     sourceSets {
-        val commonMain by getting {
+        commonMain {
             dependencies {
                 api(libs.kotlinx.io)
                 api(libs.ktor.network)
@@ -34,13 +34,13 @@ kotlin {
             }
         }
 
-        val commonTest by getting {
+        commonTest {
             dependencies {
                 implementation(libs.kotlin.test)
             }
         }
 
-        jvmMain {
+        jvmTest {
             dependencies {
                 implementation(libs.slf4j.simple)
             }

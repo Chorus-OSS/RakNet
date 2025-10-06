@@ -76,7 +76,7 @@ class RakServer(
         }
     }
 
-    private fun handle(datagram: Datagram) {
+    private suspend fun handle(datagram: Datagram) {
         val header = datagram.packet.peek().readUByte()
 
         val offline = header and RakHeader.VALID == 0u.toUByte()

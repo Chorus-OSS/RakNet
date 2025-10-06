@@ -6,19 +6,29 @@ import io.ktor.utils.io.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.channels.onFailure
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.io.Buffer
 import kotlinx.io.Source
+import kotlinx.io.bytestring.ByteString
 import kotlinx.io.readByteArray
+import kotlinx.io.readByteString
 import kotlinx.io.readUByte
+import kotlinx.io.write
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Frame
 import org.chorus_oss.raknet.types.*
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.fetchAndIncrement
 import kotlin.coroutines.CoroutineContext
 import kotlin.math.ceil
 import kotlin.time.Duration.Companion.milliseconds
 
+@OptIn(ExperimentalAtomicApi::class)
 abstract class RakSession(
     context: CoroutineContext,
     private val outbound: SendChannel<Datagram>,
@@ -34,25 +44,35 @@ abstract class RakSession(
     private val queued: Channel<Datagram> = Channel(Channel.UNLIMITED)
 
     private val receivedFrameSequences = mutableSetOf<UInt>()
+    private val receivedFrameSequencesMutex = Mutex()
+
     private val lostFrameSequences = mutableSetOf<UInt>()
+    private val lostFrameSequencesMutex = Mutex()
+
     private val inputHighestSequenceIndex = MutableList(32) { 0u }
+
     private val fragmentsQueue = mutableMapOf<UShort, MutableMap<UInt, Frame>>()
+    private val fragmentsQueueMutex = Mutex()
 
     private val inputOrderIndex = MutableList(32) { 0u }
     private val inputOrderingQueue = mutableMapOf<UByte, MutableMap<UInt, Frame>>(
         *(Array(32) { Pair(0u.toUByte(), mutableMapOf()) }),
     )
+
     private var lastInputSequence: UInt? = null
+    private var lastInputSequenceMutex = Mutex()
 
     private val outputOrderIndex = MutableList(32) { 0u }
     private val outputSequenceIndex = MutableList(32) { 0u }
 
-    private val outputFrames = mutableSetOf<Frame>()
-    private val outputBackup = mutableMapOf<UInt, List<Frame>>()
+    private val outFrames = Channel<Frame>(capacity = Channel.UNLIMITED)
 
-    private var outputSequence: UInt = 0u
-    private var outputSplitIndex: UInt = 0u
-    private var outputReliableIndex: UInt = 0u
+    private val outCache = mutableMapOf<UInt, List<Frame>>()
+    private val outCacheMutex = Mutex()
+
+    private val outSequenceID: AtomicInt = AtomicInt(0)
+    private val outSplitID: AtomicInt = AtomicInt(0)
+    private val outReliableIndex: AtomicInt = AtomicInt(0)
 
     var onPacket: (Source) -> Unit = {}
     var onError: (Error) -> Unit = {}
@@ -76,12 +96,11 @@ abstract class RakSession(
 
     fun flush() {
         while (true) {
-            val out = queued.tryReceive().getOrNull() ?: break
-            outbound.trySend(out)
+            outbound.trySend(queued.tryReceive().getOrNull() ?: break)
         }
     }
 
-    private fun tick() {
+    private suspend fun tick() {
         if (state == RakSessionState.Disconnecting || state == RakSessionState.Disconnected) {
             return
         }
@@ -92,43 +111,45 @@ abstract class RakSession(
             return disconnect(send = true, connected = true)
         }
 
-
-        if (receivedFrameSequences.isNotEmpty()) {
-            val ack = Ack(
-                sequences = receivedFrameSequences.toList(),
-            )
-
-            receivedFrameSequences.clear()
-
-            queued.trySend(
-                Datagram(
-                    packet = Buffer().also {
-                        Ack.serialize(ack, it)
-                    },
-                    address = address
+        receivedFrameSequencesMutex.withLock {
+            if (receivedFrameSequences.isNotEmpty()) {
+                val ack = Ack(
+                    sequences = receivedFrameSequences.toList(),
                 )
-            )
+
+                receivedFrameSequences.clear()
+
+                queued.trySend(
+                    Datagram(
+                        packet = Buffer().also {
+                            Ack.serialize(ack, it)
+                        },
+                        address = address
+                    )
+                )
+            }
         }
 
-        if (lostFrameSequences.isNotEmpty()) {
-            val nack = NAck(
-                sequences = lostFrameSequences.toList(),
-            )
-
-            lostFrameSequences.clear()
-
-            queued.trySend(
-                Datagram(
-                    packet = Buffer().also {
-                        NAck.serialize(nack, it)
-                    },
-                    address = address
+        lostFrameSequencesMutex.withLock {
+            if (lostFrameSequences.isNotEmpty()) {
+                val nack = NAck(
+                    sequences = lostFrameSequences.toList(),
                 )
-            )
+
+                lostFrameSequences.clear()
+
+                queued.trySend(
+                    Datagram(
+                        packet = Buffer().also {
+                            NAck.serialize(nack, it)
+                        },
+                        address = address
+                    )
+                )
+            }
         }
 
-        this.sendQueue(outputFrames.size)
-
+        sendQueue()
         flush()
     }
 
@@ -143,7 +164,7 @@ abstract class RakSession(
                 orderChannel = 0u,
                 payload = Buffer().also {
                     Disconnect.serialize(disconnect, it)
-                }
+                }.readByteString()
             )
 
             sendFrame(frame, RakPriority.Immediate)
@@ -156,12 +177,10 @@ abstract class RakSession(
         tick.cancel()
     }
 
-    fun inbound(stream: Source) {
+    suspend fun inbound(stream: Source) {
         lastUpdate = Clock.System.now()
 
-        val header = stream.peek().readUByte() and 0xF0.toUByte()
-
-        when (header) {
+        when (val header = stream.peek().readUByte() and 0xF0.toUByte()) {
             RakPacketID.ACK -> handleACK(stream)
             RakPacketID.NACK -> handleNACK(stream)
             RakHeader.VALID -> handleFrameSet(stream)
@@ -182,62 +201,76 @@ abstract class RakSession(
 
     protected abstract fun onDisconnect()
 
-    private fun handleACK(stream: Source) {
+    private suspend fun handleACK(stream: Source) {
         val ack = Ack.deserialize(stream)
 
-        for (sequence in ack.sequences) {
-            if (!outputBackup.contains(sequence)) {
-                log.debug { "Received ack for unknown sequence $sequence from $address" }
-            }
+        outCacheMutex.withLock {
+            for (sequence in ack.sequences) {
+                if (!outCache.contains(sequence)) {
+                    log.debug { "Received ack for unknown sequence $sequence from $address" }
+                }
 
-            outputBackup.remove(sequence)
+                outCache.remove(sequence)
+            }
         }
     }
 
     private fun handleNACK(stream: Source) {
         val nack = NAck.deserialize(stream)
 
+        log.info { "Handling NACK: $nack" }
+
         for (sequence in nack.sequences) {
-            val frames = outputBackup[sequence] ?: emptyList()
+            val frames = outCache[sequence] ?: emptyList()
             for (frame in frames) {
                 sendFrame(frame, RakPriority.Immediate)
             }
         }
     }
 
-    private fun handleFrameSet(stream: Source) {
+    private suspend fun handleFrameSet(stream: Source) {
         val frameSet = FrameSet.deserialize(stream)
 
-        if (receivedFrameSequences.contains(frameSet.sequence)) {
-            log.debug { "Received duplicate frameset ${frameSet.sequence} from $address" }
+        receivedFrameSequencesMutex.withLock {
+            if (receivedFrameSequences.contains(frameSet.sequence)) {
+                log.warn { "Received duplicate frameset ${frameSet.sequence} from $address" }
 
-            return onError(Error("Received duplicate frameset ${frameSet.sequence} from $address"))
-        }
-
-        lostFrameSequences.remove(frameSet.sequence)
-
-        if (lastInputSequence != null && (frameSet.sequence < lastInputSequence!! || frameSet.sequence == lastInputSequence!!)) {
-            log.debug { "Received out of order frameset ${frameSet.sequence} from $address" }
-
-            return onError(Error("Received out of order frameset ${frameSet.sequence} from $address"))
-        }
-
-        receivedFrameSequences.add(frameSet.sequence)
-
-        if (lastInputSequence != null && (frameSet.sequence - lastInputSequence!! > 1u)) {
-            for (i in lastInputSequence!! + 1u until frameSet.sequence) {
-                lostFrameSequences.add(i)
+                return onError(Error("Received duplicate frameset ${frameSet.sequence} from $address"))
             }
+
+            receivedFrameSequences.add(frameSet.sequence)
         }
 
-        lastInputSequence = frameSet.sequence
+        lastInputSequenceMutex.withLock {
+            lastInputSequence?.let {
+                if (frameSet.sequence <= it) {
+                    log.warn { "Received out of order frameset ${frameSet.sequence} from $address. expected ${it + 1u}" }
+
+                    return onError(Error("Received out of order frameset ${frameSet.sequence} from $address"))
+                }
+            }
+
+            lostFrameSequencesMutex.withLock {
+                lostFrameSequences.remove(frameSet.sequence)
+
+                lastInputSequence?.let {
+                    if (frameSet.sequence - it > 1u) {
+                        for (i in it + 1u until frameSet.sequence) {
+                            lostFrameSequences.add(i)
+                        }
+                    }
+                }
+            }
+
+            lastInputSequence = frameSet.sequence
+        }
 
         for (frame in frameSet.frames) {
             handleFrame(frame)
         }
     }
 
-    private fun handleFrame(frame: Frame) {
+    private suspend fun handleFrame(frame: Frame) {
         if (frame.isSplit) return handleFragment(frame)
 
         if (frame.reliability.isSequenced) {
@@ -245,14 +278,14 @@ abstract class RakSession(
                 frame.sequenceIndex < (inputHighestSequenceIndex[frame.orderChannel.toInt()]) ||
                 frame.orderIndex < (inputOrderIndex[frame.orderChannel.toInt()])
             ) {
-                log.debug { "Received out of order frame ${frame.sequenceIndex} from $address" }
+                log.warn { "Received out of order frame ${frame.sequenceIndex} from $address" }
 
                 return onError(Error("Received out of order frame ${frame.sequenceIndex} from $address"))
             }
 
             inputHighestSequenceIndex[frame.orderChannel.toInt()] = frame.sequenceIndex + 1u
 
-            return handle(frame.payload)
+            return handle(Buffer().apply { write(frame.payload) })
         }
 
         if (frame.reliability.isOrdered) {
@@ -260,7 +293,7 @@ abstract class RakSession(
                 inputHighestSequenceIndex[frame.orderChannel.toInt()] = 0u
                 inputOrderIndex[frame.orderChannel.toInt()] = frame.orderIndex + 1u
 
-                handle(frame.payload)
+                handle(Buffer().apply { write(frame.payload) })
 
                 var index = inputOrderIndex[frame.orderChannel.toInt()]
                 val outOfOrderQueue = inputOrderingQueue[frame.orderChannel]!!
@@ -270,7 +303,7 @@ abstract class RakSession(
 
                     val f = outOfOrderQueue[index] ?: return
 
-                    handle(f.payload)
+                    handle(Buffer().apply { write(f.payload) })
                     outOfOrderQueue.remove(index)
                 }
 
@@ -282,33 +315,35 @@ abstract class RakSession(
                 unordered[frame.orderIndex] = frame
             }
         } else {
-            return handle(frame.payload)
+            return handle(Buffer().apply { write(frame.payload) })
         }
     }
 
-    private fun handleFragment(frame: Frame) {
-        val fragment = fragmentsQueue.getOrPut(frame.splitID) { mutableMapOf() }
+    private suspend fun handleFragment(frame: Frame) {
+        fragmentsQueueMutex.withLock {
+            val fragment = fragmentsQueue.getOrPut(frame.splitID) { mutableMapOf() }
 
-        fragment[frame.splitIndex] = frame
+            fragment[frame.splitIndex] = frame
 
-        if (fragment.size.toUInt() == frame.splitSize) {
-            val stream = Buffer()
+            if (fragment.size.toUInt() == frame.splitSize) {
+                val stream = Buffer()
 
-            for (i in 0u until frame.splitSize) {
-                val f = fragment[i] ?: return
-                stream.write(f.payload.readByteArray())
+                for (i in 0u until frame.splitSize) {
+                    val f = fragment[i] ?: return
+                    stream.write(f.payload)
+                }
+
+                val nFrame = frame.copy(
+                    payload = stream.readByteString(),
+                    splitSize = 0u,
+                    splitID = 0u,
+                    splitIndex = 0u,
+                )
+
+                fragmentsQueue.remove(frame.splitID)
+
+                return handleFrame(nFrame)
             }
-
-            val nFrame = frame.copy(
-                payload = stream,
-                splitSize = 0u,
-                splitID = 0u,
-                splitIndex = 0u,
-            )
-
-            fragmentsQueue.remove(frame.splitID)
-
-            return handleFrame(nFrame)
         }
     }
 
@@ -322,21 +357,21 @@ abstract class RakSession(
         }
 
         val maxSize = mtu - 36u
-        val splitSize = ceil(frame.payload.remaining.toFloat() / maxSize.toFloat()).toUInt()
+        val splitSize = ceil(frame.payload.size.toFloat() / maxSize.toFloat()).toUInt()
 
-        frame.reliableIndex = outputReliableIndex++
+        frame.reliableIndex = outReliableIndex.fetchAndIncrement().toUInt()
 
-        if (frame.payload.remaining > maxSize.toLong()) {
-            val splitId = (outputSplitIndex++ % 65536u).toUShort()
+        if (frame.payload.size > maxSize.toLong()) {
+            val splitID = (outSplitID.fetchAndIncrement().toUInt() % 65536u).toUShort()
 
             for (i in 0 until splitSize.toInt()) {
-                val subBuf = Buffer()
-                frame.payload.readAtMostTo(subBuf, maxSize.toLong())
+                val start = i * maxSize.toInt()
+                val end = minOf(start + maxSize.toInt(), frame.payload.size)
 
                 val nFrame = frame.copy(
-                    payload = subBuf,
+                    payload = frame.payload.substring(start, end),
                     splitIndex = i.toUInt(),
-                    splitID = splitId,
+                    splitID = splitID,
                     splitSize = splitSize
                 )
 
@@ -348,49 +383,71 @@ abstract class RakSession(
     }
 
     private fun queueFrame(frame: Frame, priority: RakPriority) {
-        var length = RakConstants.DGRAM_HEADER_SIZE.toLong()
-
-        for (f in outputFrames) {
-            length += f.byteLength
-        }
-
-        if (length + frame.byteLength > (mtu - RakConstants.DGRAM_MTU_OVERHEAD).toLong()) {
-            sendQueue(outputFrames.size)
-        }
-
-        outputFrames.add(frame)
-
-        if (priority == RakPriority.Immediate) {
-            sendQueue(1)
-            flush()
+        when (priority) {
+            RakPriority.Immediate -> sendImmediate(frame)
+            else -> outFrames.trySend(frame)
         }
     }
 
-    private fun sendQueue(amount: Int) {
-        if (outputFrames.isEmpty()) return
+    private suspend fun sendQueue() {
+        val frames = generateSequence { outFrames.tryReceive().getOrNull() }.toList()
 
-        val frameSet = FrameSet(
-            sequence = outputSequence++,
-            frames = outputFrames.take(amount).toList(),
+        val max = (mtu - RakConstants.DGRAM_MTU_OVERHEAD).toLong()
+
+        val batch = mutableListOf<Frame>()
+        var size = RakConstants.DGRAM_HEADER_SIZE.toLong()
+        for (frame in frames) {
+            size += frame.byteLength
+
+            if (size > max) {
+                sendFrames(batch)
+                batch.clear()
+                size = RakConstants.DGRAM_HEADER_SIZE.toLong()
+            }
+
+            batch.add(frame)
+        }
+
+        if (batch.isNotEmpty()) sendFrames(batch)
+    }
+
+    private fun sendFrames(frames: List<Frame>) {
+        val set = FrameSet(
+            sequence = outSequenceID.fetchAndIncrement().toUInt(),
+            frames = frames,
         )
 
-        outputBackup[frameSet.sequence] = frameSet.frames
-
-        for (frame in frameSet.frames) {
-            outputFrames.remove(frame)
-        }
+        outCache[set.sequence] = set.frames
 
         queued.trySend(
             Datagram(
                 packet = Buffer().also {
-                    FrameSet.serialize(frameSet, it)
+                    FrameSet.serialize(set, it)
                 },
                 address = address
             )
         )
     }
 
-    fun send(packet: Buffer, reliability: RakReliability, priority: RakPriority) {
+    private fun sendImmediate(frame: Frame) {
+        val set = FrameSet(
+            sequence = outSequenceID.fetchAndIncrement().toUInt(),
+            frames = listOf(frame),
+        )
+
+        outCache[set.sequence] = set.frames
+
+        outbound.trySend(
+            Datagram(
+                packet = Buffer().also {
+                    FrameSet.serialize(set, it)
+                },
+                address = address
+            )
+        )
+    }
+
+    fun send(packet: ByteString, reliability: RakReliability, priority: RakPriority) {
         sendFrame(
             Frame(
                 payload = packet,
