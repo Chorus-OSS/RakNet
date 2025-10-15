@@ -1,4 +1,6 @@
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.io.*
 import kotlinx.io.files.Path
 import org.chorus_oss.raknet.rakClient
@@ -89,7 +91,7 @@ class Main {
 //                    }
 
                     val id = stream.readUByte()
-                    when (id.toUInt()) {
+                    when (val id = id.toUInt()) {
                         0xFEu -> {
                             val reply = stream.readUByte() == 0x01u.toUByte()
                             val message = stream.readString()
@@ -111,7 +113,7 @@ class Main {
 
                             burstReceivedCount++
                         }
-                        else -> Unit
+                        else -> log.info { "Unhandled packet, id: $id" }
                     }
                 }
 
@@ -137,7 +139,7 @@ class Main {
 //                    }
 
                     val id = stream.readUByte()
-                    when (id.toUInt()) {
+                    when (val id = id.toUInt()) {
                         0xFEu -> {
                             val reply = stream.readUByte() == 0x01u.toUByte()
                             val message = stream.readString()
@@ -155,7 +157,7 @@ class Main {
                                 connection.send(packet, RakReliability.ReliableOrdered, RakPriority.Normal)
                             }
                         }
-                        else -> Unit
+                        else -> log.info { "Unhandled packet, id: $id" }
                     }
                 }
 

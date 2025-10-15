@@ -183,12 +183,12 @@ abstract class RakSession(
         when (val header = stream.peek().readUByte() and 0xF0.toUByte()) {
             RakPacketID.ACK -> handleACK(stream)
             RakPacketID.NACK -> handleNACK(stream)
-            RakHeader.VALID -> handleFrameSet(stream)
+            RakPacketID.FRAME_SET -> handleFrameSet(stream)
 
             else -> {
                 val id = header.toString(16).padStart(2, '0').uppercase()
 
-                log.debug { "Received unknown online packet \"0x$id\" from $address" }
+                log.warn { "Received unknown online packet \"0x$id\" from $address" }
 
                 onError(Error("Received unknown online packet \"0x$id\" from $address"))
             }
@@ -218,12 +218,10 @@ abstract class RakSession(
     private fun handleNACK(stream: Source) {
         val nack = NAck.deserialize(stream)
 
-        log.info { "Handling NACK: $nack" }
-
         for (sequence in nack.sequences) {
             val frames = outCache[sequence] ?: emptyList()
             for (frame in frames) {
-                sendFrame(frame, RakPriority.Immediate)
+                queueFrame(frame, RakPriority.Immediate)
             }
         }
     }
@@ -389,8 +387,8 @@ abstract class RakSession(
         }
     }
 
-    private suspend fun sendQueue() {
-        val frames = generateSequence { outFrames.tryReceive().getOrNull() }.toList()
+    private fun sendQueue() {
+        val frames = generateSequence { outFrames.tryReceive().getOrNull() }
 
         val max = (mtu - RakConstants.DGRAM_MTU_OVERHEAD).toLong()
 
@@ -412,9 +410,11 @@ abstract class RakSession(
     }
 
     private fun sendFrames(frames: List<Frame>) {
+        if (frames.isEmpty()) return
+
         val set = FrameSet(
             sequence = outSequenceID.fetchAndIncrement().toUInt(),
-            frames = frames,
+            frames = frames.toList(),
         )
 
         outCache[set.sequence] = set.frames

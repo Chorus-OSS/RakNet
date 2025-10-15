@@ -2,7 +2,6 @@ package org.chorus_oss.raknet.protocol.types
 
 import io.ktor.utils.io.core.*
 import kotlinx.io.*
-import kotlinx.io.Buffer
 import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakCodec
 import org.chorus_oss.raknet.types.RakHeader
