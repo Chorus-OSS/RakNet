@@ -1,8 +1,5 @@
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.io.*
-import kotlinx.io.files.Path
 import org.chorus_oss.raknet.rakClient
 import org.chorus_oss.raknet.rakServer
 import org.chorus_oss.raknet.server.RakServer
@@ -153,7 +150,7 @@ class Main {
                                 write(ByteArray(32767) { 1 })
                             }.readByteString()
 
-                            repeat(8) {
+                            repeat(32) {
                                 connection.send(packet, RakReliability.ReliableOrdered, RakPriority.Normal)
                             }
                         }

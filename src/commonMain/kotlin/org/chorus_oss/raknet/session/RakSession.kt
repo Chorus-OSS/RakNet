@@ -6,7 +6,6 @@ import io.ktor.utils.io.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
-import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
@@ -14,7 +13,6 @@ import kotlinx.datetime.Instant
 import kotlinx.io.Buffer
 import kotlinx.io.Source
 import kotlinx.io.bytestring.ByteString
-import kotlinx.io.readByteArray
 import kotlinx.io.readByteString
 import kotlinx.io.readUByte
 import kotlinx.io.write
@@ -215,13 +213,15 @@ abstract class RakSession(
         }
     }
 
-    private fun handleNACK(stream: Source) {
+    private suspend fun handleNACK(stream: Source) {
         val nack = NAck.deserialize(stream)
 
-        for (sequence in nack.sequences) {
-            val frames = outCache[sequence] ?: emptyList()
-            for (frame in frames) {
-                queueFrame(frame, RakPriority.Immediate)
+        outCacheMutex.withLock {
+            for (sequence in nack.sequences) {
+                val frames = outCache[sequence] ?: emptyList()
+                for (frame in frames) {
+                    queueFrame(frame, RakPriority.Immediate)
+                }
             }
         }
     }
@@ -284,9 +284,7 @@ abstract class RakSession(
             inputHighestSequenceIndex[frame.orderChannel.toInt()] = frame.sequenceIndex + 1u
 
             return handle(Buffer().apply { write(frame.payload) })
-        }
-
-        if (frame.reliability.isOrdered) {
+        } else if (frame.reliability.isOrdered) {
             if (frame.orderIndex == inputOrderIndex[frame.orderChannel.toInt()]) {
                 inputHighestSequenceIndex[frame.orderChannel.toInt()] = 0u
                 inputOrderIndex[frame.orderChannel.toInt()] = frame.orderIndex + 1u
@@ -296,13 +294,13 @@ abstract class RakSession(
                 var index = inputOrderIndex[frame.orderChannel.toInt()]
                 val outOfOrderQueue = inputOrderingQueue[frame.orderChannel]!!
 
-                while (outOfOrderQueue.contains(index)) {
-                    index++
+                while (true) {
+                    val outOfOrderFrame = outOfOrderQueue[index] ?: break
 
-                    val f = outOfOrderQueue[index] ?: return
-
-                    handle(Buffer().apply { write(f.payload) })
+                    handle(Buffer().apply { write(outOfOrderFrame.payload) })
                     outOfOrderQueue.remove(index)
+
+                    index++
                 }
 
                 inputOrderingQueue[frame.orderChannel] = outOfOrderQueue
@@ -417,7 +415,7 @@ abstract class RakSession(
             frames = frames.toList(),
         )
 
-        outCache[set.sequence] = set.frames
+        outCache[set.sequence] = set.frames.toList()
 
         queued.trySend(
             Datagram(
@@ -435,7 +433,7 @@ abstract class RakSession(
             frames = listOf(frame),
         )
 
-        outCache[set.sequence] = set.frames
+        outCache[set.sequence] = set.frames.toList()
 
         outbound.trySend(
             Datagram(
