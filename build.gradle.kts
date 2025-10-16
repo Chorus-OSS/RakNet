@@ -10,7 +10,7 @@ plugins {
 
 description = "RakNet library for Kotlin Multiplatform"
 group = "org.chorus-oss"
-version = "0.1.0"
+version = "0.0.2"
 
 repositories {
     mavenCentral()
