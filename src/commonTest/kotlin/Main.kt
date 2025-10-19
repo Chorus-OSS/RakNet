@@ -1,4 +1,5 @@
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.launch
 import kotlinx.io.*
 import org.chorus_oss.raknet.rakClient
 import org.chorus_oss.raknet.rakServer
@@ -147,11 +148,13 @@ class Main {
 
                             val packet = Buffer().apply {
                                 writeUByte(0xFFu)
-                                write(ByteArray(32767) { 1 })
+                                write(ByteArray(100_000) { 1 })
                             }.readByteString()
 
-                            repeat(32) {
-                                connection.send(packet, RakReliability.ReliableOrdered, RakPriority.Normal)
+                            repeat(100) {
+                                connection.launch {
+                                    connection.send(packet, RakReliability.ReliableOrdered, RakPriority.Normal)
+                                }
                             }
                         }
                         else -> log.info { "Unhandled packet, id: $id" }

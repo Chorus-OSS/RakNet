@@ -134,9 +134,9 @@ class RakClient(
 
     fun stop(timeout: Long = 5000) = runBlocking { stopSuspend(timeout) }
 
-    private suspend fun handle(datagram: Datagram) {
+    private fun handle(datagram: Datagram) {
         if (state == RakClientState.HandshakeCompleted) {
-            session?.inbound(datagram.packet)
+            session?.inbound?.trySend(datagram.packet)
             return
         }
 

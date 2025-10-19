@@ -6,7 +6,6 @@ import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakCodec
 import org.chorus_oss.raknet.types.RakHeader
 import org.chorus_oss.raknet.types.RakReliability
-import kotlin.math.ceil
 
 data class Frame(
     var reliability: RakReliability,
@@ -27,20 +26,13 @@ data class Frame(
             var length: Long = 0
 
             length += 3
-            length += payload.size
 
-            if (reliability.isReliable) {
-                length += 3
-            }
-            if (reliability.isSequenced) {
-                length += 3
-            }
-            if (reliability.isOrdered) {
-                length += 4
-            }
-            if (isSplit) {
-                length += 10
-            }
+            if (reliability.isReliable) length += 3
+            if (reliability.isSequenced) length += 3
+            if (reliability.isOrdered || reliability.isSequenced) length += 4
+            if (isSplit) length += 10
+
+            length += payload.size
 
             return length
         }
@@ -48,14 +40,11 @@ data class Frame(
     companion object : RakCodec<List<Frame>> {
         override fun serialize(value: List<Frame>, stream: Sink) {
             for (frame in value) {
-                stream.writeUByte(
-                    (frame.reliability.ordinal shl 5).toUByte() or (
-                            when {
-                                frame.isSplit -> RakHeader.SPLIT
-                                else -> 0u
-                            }
-                            )
-                )
+                var flags = (frame.reliability.ordinal shl 5).toUByte()
+                if (frame.isSplit) {
+                    flags = flags or RakHeader.SPLIT
+                }
+                stream.writeUByte(flags)
 
                 stream.writeUShort((frame.payload.size shl 3).toUShort())
 
@@ -67,7 +56,7 @@ data class Frame(
                     UMedium.serialize(frame.sequenceIndex, stream)
                 }
 
-                if (frame.reliability.isOrdered) {
+                if (frame.reliability.isOrdered || frame.reliability.isSequenced) {
                     UMedium.serialize(frame.orderIndex, stream)
                     stream.writeUByte(frame.orderChannel)
                 }
@@ -90,7 +79,7 @@ data class Frame(
                 val reliability = RakReliability.entries[((header.toUInt() and 0xE0u) shr 5).toInt()]
                 val split = (header and RakHeader.SPLIT) != 0u.toUByte()
 
-                val length = ceil(stream.readUShort().toFloat() / 8f).toInt()
+                val length = (stream.readUShort().toInt() + 7) shr 3
 
                 var reliableIndex = 0u
                 if (reliability.isReliable) {
@@ -104,7 +93,7 @@ data class Frame(
 
                 var orderIndex = 0u
                 var orderChannel: UByte = 0u
-                if (reliability.isOrdered) {
+                if (reliability.isOrdered || reliability.isSequenced) {
                     orderIndex = UMedium.deserialize(stream)
                     orderChannel = stream.readUByte()
                 }

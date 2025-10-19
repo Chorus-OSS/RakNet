@@ -85,7 +85,7 @@ class RakServer(
         }
 
         if (!offline) {
-            sessions[datagram.address]?.inbound(datagram.packet)
+            sessions[datagram.address]?.inbound?.trySend(datagram.packet)
         }
     }
 
