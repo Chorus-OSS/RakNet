@@ -13,6 +13,9 @@ import kotlinx.io.Buffer
 import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.config.RakSessionConfig
 import org.chorus_oss.raknet.protocol.packets.*
+import org.chorus_oss.raknet.protocol.packets.ConnectedPing.Companion.handleConnectedPing
+import org.chorus_oss.raknet.protocol.packets.ConnectedPong.Companion.handleConnectedPong
+import org.chorus_oss.raknet.protocol.packets.Disconnect.Companion.handleDisconnect
 import org.chorus_oss.raknet.protocol.types.Frame
 import org.chorus_oss.raknet.types.*
 import kotlin.concurrent.atomics.AtomicInt
@@ -32,10 +35,19 @@ class RakSession(
 ) : CoroutineScope {
     override val coroutineContext: CoroutineContext = context
 
-    val config = RakSessionConfig().apply(config)
+    internal val config = RakSessionConfig().apply(config)
 
     internal var state: RakSessionState = RakSessionState.Connecting
+
     private var lastUpdate: Instant = Clock.System.now()
+    private var lastTick: Instant = Clock.System.now()
+
+    internal var currPing: Instant = Instant.DISTANT_PAST
+    internal var lastPing: Instant = Instant.DISTANT_PAST
+    internal var lastPong: Instant = Instant.DISTANT_PAST
+
+    val ping: Long
+        get() = lastPing.toEpochMilliseconds() - lastPong.toEpochMilliseconds()
 
     private val queued: Channel<Datagram> = Channel(Channel.UNLIMITED)
 
@@ -78,16 +90,31 @@ class RakSession(
     }
 
     private val update: Job = launch {
-        var last = Clock.System.now()
         while (isActive) {
             generateSequence { out.tryReceive().getOrNull() }.forEach { sendFrame(it.first, it.second) }
             generateSequence { inbound.tryReceive().getOrNull() }.forEach(::inbound)
 
             val now = Clock.System.now()
-            if (now - last >= 10.milliseconds) {
+            if (lastTick + 10.milliseconds <= now) {
                 tick()
-                last = now
+                lastTick = now
             }
+
+            if (currPing + 2000.milliseconds <= now) {
+                val ping = ConnectedPing(
+                    timestamp = now.toEpochMilliseconds().toULong(),
+                )
+
+                send(
+                    Buffer().apply { ConnectedPing.serialize(ping, this) }.readByteString(),
+                    RakReliability.Unreliable,
+                    RakPriority.Immediate,
+                )
+
+                currPing = now
+            }
+
+            yield()
         }
     }
 
@@ -189,6 +216,15 @@ class RakSession(
         }
     }
 
+    private fun handlePacket(stream: Source) {
+        when (val id = stream.peek().readUByte()) {
+            RakPacketID.CONNECTED_PING -> handleConnectedPing(stream)
+            RakPacketID.CONNECTED_PONG -> handleConnectedPong(stream)
+            RakPacketID.DISCONNECT -> handleDisconnect(stream)
+            else -> config.onInbound(this, stream)
+        }
+    }
+
     private fun handleACK(stream: Source) {
         val ack = Ack.deserialize(stream)
 
@@ -263,13 +299,13 @@ class RakSession(
 
             inputHighestSequenceIndex[frame.orderChannel.toInt()] = frame.sequenceIndex + 1u
 
-            return config.onInbound(this, Buffer().apply { write(frame.payload) })
+            return handlePacket(Buffer().apply { write(frame.payload) })
         } else if (frame.reliability.isOrdered) {
             if (frame.orderIndex == inputOrderIndex[frame.orderChannel.toInt()]) {
                 inputHighestSequenceIndex[frame.orderChannel.toInt()] = 0u
                 inputOrderIndex[frame.orderChannel.toInt()] = frame.orderIndex + 1u
 
-                config.onInbound(this, Buffer().apply { write(frame.payload) })
+                handlePacket(Buffer().apply { write(frame.payload) })
 
                 var index = inputOrderIndex[frame.orderChannel.toInt()]
                 val outOfOrderQueue = inputOrderingQueue.getOrPut(frame.orderChannel) { mutableMapOf() }
@@ -277,7 +313,7 @@ class RakSession(
                 while (true) {
                     val outOfOrderFrame = outOfOrderQueue[index] ?: break
 
-                    config.onInbound(this, Buffer().apply { write(outOfOrderFrame.payload) })
+                    handlePacket(Buffer().apply { write(outOfOrderFrame.payload) })
                     outOfOrderQueue.remove(index)
 
                     index++
@@ -291,7 +327,7 @@ class RakSession(
                 unordered[frame.orderIndex] = frame
             }
         } else {
-            return config.onInbound(this, Buffer().apply { write(frame.payload) })
+            return handlePacket(Buffer().apply { write(frame.payload) })
         }
     }
 

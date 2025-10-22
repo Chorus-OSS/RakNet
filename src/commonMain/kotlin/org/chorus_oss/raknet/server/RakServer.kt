@@ -216,20 +216,12 @@ class RakServer(
                     onInbound { stream ->
                         stream.peek().use {
                             when (it.readUByte()) {
-                                RakPacketID.DISCONNECT -> {
-                                    val connected = state == RakSessionState.Connected
-                                    state = RakSessionState.Disconnecting
-                                    disconnect(send = false, connected = connected)
-                                    state = RakSessionState.Disconnected
-                                }
-
                                 RakPacketID.CONNECTION_REQUEST -> {
                                     if (state == RakSessionState.Connecting) {
                                         handleConnectionRequest(stream)
                                     } else RakSession.log.warn { "Unexpected ConnectionRequest" }
                                 }
 
-                                RakPacketID.CONNECTED_PING -> handleConnectedPing(stream)
                                 RakPacketID.NEW_INCOMING_CONNECTION -> {
                                     if (state == RakSessionState.Connecting) {
                                         state = RakSessionState.Connected

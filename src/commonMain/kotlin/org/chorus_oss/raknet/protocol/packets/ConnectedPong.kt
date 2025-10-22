@@ -1,7 +1,10 @@
 package org.chorus_oss.raknet.protocol.packets
 
+import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 import kotlinx.io.*
 import org.chorus_oss.raknet.protocol.RakPacketCodec
+import org.chorus_oss.raknet.session.RakSession
 import org.chorus_oss.raknet.types.RakPacketID
 
 data class ConnectedPong(
@@ -24,6 +27,16 @@ data class ConnectedPong(
                 pingTimestamp = stream.readULong(),
                 timestamp = stream.readULong(),
             )
+        }
+
+        fun RakSession.handleConnectedPong(stream: Source) {
+            val pong = deserialize(stream)
+
+            val ping = Instant.fromEpochMilliseconds(pong.timestamp.toLong())
+            if (this.currPing == ping) {
+                this.lastPing = this.currPing
+                this.lastPong = Clock.System.now()
+            }
         }
     }
 }

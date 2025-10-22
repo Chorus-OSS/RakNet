@@ -5,6 +5,7 @@ import kotlinx.io.Source
 import kotlinx.io.readUByte
 import kotlinx.io.writeUByte
 import org.chorus_oss.raknet.protocol.RakPacketCodec
+import org.chorus_oss.raknet.session.RakSession
 import org.chorus_oss.raknet.types.RakPacketID
 
 class Disconnect {
@@ -19,6 +20,13 @@ class Disconnect {
         override fun deserialize(stream: Source): Disconnect {
             stream.readUByte() // Packet ID
             return Disconnect()
+        }
+
+        fun RakSession.handleDisconnect(stream: Source) {
+            deserialize(stream)
+
+            RakSession.log.trace { "RakSession closed by $address" }
+            disconnect(send = false, connected = true)
         }
     }
 }
