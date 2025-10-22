@@ -3,7 +3,7 @@ package org.chorus_oss.raknet.server
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
-import io.ktor.utils.io.core.preview
+import io.ktor.utils.io.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.datetime.Clock
@@ -16,11 +16,7 @@ import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.session.RakSession
 import org.chorus_oss.raknet.session.RakSessionState
-import org.chorus_oss.raknet.types.RakConstants
-import org.chorus_oss.raknet.types.RakHeader
-import org.chorus_oss.raknet.types.RakPacketID
-import org.chorus_oss.raknet.types.RakPriority
-import org.chorus_oss.raknet.types.RakReliability
+import org.chorus_oss.raknet.types.*
 import kotlin.coroutines.CoroutineContext
 
 class RakServer(
@@ -218,7 +214,7 @@ class RakServer(
                         )
                     }
 
-                    onInbound {stream ->
+                    onInbound { stream ->
                         stream.preview {
                             when (it.readUByte()) {
                                 RakPacketID.DISCONNECT -> {

@@ -13,13 +13,7 @@ import kotlinx.io.bytestring.ByteString
 import kotlinx.io.readByteString
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.config.RakClientConfig
-import org.chorus_oss.raknet.protocol.packets.ConnectionRequest
-import org.chorus_oss.raknet.protocol.packets.ConnectionRequestAccepted
-import org.chorus_oss.raknet.protocol.packets.NewIncomingConnection
-import org.chorus_oss.raknet.protocol.packets.OpenConnectionReply1
-import org.chorus_oss.raknet.protocol.packets.OpenConnectionReply2
-import org.chorus_oss.raknet.protocol.packets.OpenConnectionRequest1
-import org.chorus_oss.raknet.protocol.packets.OpenConnectionRequest2
+import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.session.RakSession
 import org.chorus_oss.raknet.session.RakSessionState
@@ -222,6 +216,7 @@ class RakClient(
                             state = RakSessionState.Disconnected
                             RakSession.log.warn { "Connection request failed" }
                         }
+
                         else -> onPacket(stream)
                     }
                 }
