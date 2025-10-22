@@ -6,7 +6,10 @@ import org.chorus_oss.raknet.types.RakConstants
 import kotlin.random.Random
 import kotlin.random.nextULong
 
-class RakClientConfig : RakSessionConfig() {
+class RakClientConfig {
+    var mtu: UShort = RakConstants.MAX_MTU_SIZE
+    var protocol: UByte = RakConstants.PROTOCOL
+    var timeout: Int = RakConstants.SESSION_TIMEOUT_MS
     var guid: ULong = Random.nextULong()
     var magic: ByteString = RakConstants.MAGIC
     var connectionAttemptTimeout: Int = RakConstants.CONNECTION_ATTEMPT_TIMEOUT_MS
@@ -15,4 +18,15 @@ class RakClientConfig : RakSessionConfig() {
     var serverGUID: ULong = 0uL
     var mtuSizes: List<UShort> = RakConstants.MTU_SIZES
     var internalAddresses: Int = 10
+
+    var onConnect: (RakSession) -> Unit = {}
+    var onDisconnect: (RakSession) -> Unit = {}
+
+    fun onConnect(fn: (RakSession) -> Unit) {
+        this.onConnect = fn
+    }
+
+    fun onDisconnect(fn: (RakSession) -> Unit) {
+        this.onDisconnect = fn
+    }
 }
