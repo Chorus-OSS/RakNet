@@ -3,7 +3,6 @@ package org.chorus_oss.raknet.server
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
-import io.ktor.utils.io.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.datetime.Clock
@@ -215,7 +214,7 @@ class RakServer(
                     }
 
                     onInbound { stream ->
-                        stream.preview {
+                        stream.peek().use {
                             when (it.readUByte()) {
                                 RakPacketID.DISCONNECT -> {
                                     val connected = state == RakSessionState.Connected

@@ -3,7 +3,6 @@ package org.chorus_oss.raknet.client
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
-import io.ktor.utils.io.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.datetime.Clock
@@ -143,7 +142,7 @@ class RakClient(
             return
         }
 
-        datagram.packet.preview {
+        datagram.packet.peek().use {
             val id = it.readUByte()
             when (id) {
                 RakPacketID.OPEN_CONNECTION_REPLY_1 -> handleOpenConnectionReply1(datagram.packet)
@@ -207,7 +206,7 @@ class RakClient(
             }
 
             onInbound { stream ->
-                stream.preview {
+                stream.peek().use {
                     when (it.readUByte()) {
                         RakPacketID.CONNECTION_REQUEST_ACCEPTED -> handleConnectionRequestAccepted(stream)
                         RakPacketID.CONNECTION_REQUEST_FAILED -> {
