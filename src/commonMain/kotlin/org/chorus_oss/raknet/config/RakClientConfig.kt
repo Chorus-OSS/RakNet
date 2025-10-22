@@ -15,15 +15,4 @@ class RakClientConfig : RakSessionConfig() {
     var serverGUID: ULong = 0uL
     var mtuSizes: List<UShort> = RakConstants.MTU_SIZES
     var internalAddresses: Int = 10
-
-    var onConnect: (RakSession) -> Unit = {}
-    var onDisconnect: (RakSession) -> Unit = {}
-
-    fun onConnect(fn: (RakSession) -> Unit) {
-        this.onConnect = fn
-    }
-
-    fun onDisconnect(fn: (RakSession) -> Unit) {
-        this.onDisconnect = fn
-    }
 }

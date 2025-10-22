@@ -3,17 +3,24 @@ package org.chorus_oss.raknet.server
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
+import io.ktor.utils.io.core.preview
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
+import kotlinx.datetime.Clock
 import kotlinx.io.Buffer
+import kotlinx.io.Source
+import kotlinx.io.readByteString
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.config.RakServerConfig
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.session.RakSession
+import org.chorus_oss.raknet.session.RakSessionState
 import org.chorus_oss.raknet.types.RakConstants
 import org.chorus_oss.raknet.types.RakHeader
 import org.chorus_oss.raknet.types.RakPacketID
+import org.chorus_oss.raknet.types.RakPriority
+import org.chorus_oss.raknet.types.RakReliability
 import kotlin.coroutines.CoroutineContext
 
 class RakServer(
@@ -23,14 +30,34 @@ class RakServer(
 ) : CoroutineScope {
     override val coroutineContext: CoroutineContext = Dispatchers.IO + SupervisorJob() + CoroutineName("RakServer")
 
-    private val sessions: MutableMap<SocketAddress, RakServerSession> = mutableMapOf()
+    private val sessions: MutableMap<SocketAddress, RakSession> = mutableMapOf()
 
     private val outbound: Channel<Datagram> = Channel(Channel.UNLIMITED)
 
     private val startup: CompletableDeferred<Unit> = CompletableDeferred()
     private val stop: CompletableJob = Job()
 
-    private val serverJob: Job = initServerJob()
+    private val serverJob: Job = launch(start = CoroutineStart.LAZY) {
+        val socket = aSocket(selector).udp().bind(host, port)
+
+        val acceptJob = launch {
+            while (isActive) {
+                handle(socket.receive())
+            }
+        }
+
+        val sendJob = launch {
+            for (data in outbound) {
+                socket.send(data)
+            }
+        }
+
+        startup.complete(Unit)
+        stop.join()
+
+        acceptJob.cancel()
+        sendJob.cancel()
+    }
 
     suspend fun startSuspend(wait: Boolean = false): RakServer {
         serverJob.start()
@@ -52,40 +79,13 @@ class RakServer(
 
     fun stop() = runBlocking { stopSuspend() }
 
-    private fun initServerJob(): Job {
-        return launch(start = CoroutineStart.LAZY) {
-            val socket = aSocket(selector).udp().bind(host, port)
-
-            val acceptJob = launch {
-                while (isActive) {
-                    handle(socket.receive())
-                }
-            }
-
-            val sendJob = launch {
-                for (data in outbound) {
-                    socket.send(data)
-                }
-            }
-
-            startup.complete(Unit)
-            stop.join()
-
-            acceptJob.cancel()
-            sendJob.cancel()
-        }
-    }
-
-    private suspend fun handle(datagram: Datagram) {
+    private fun handle(datagram: Datagram) {
         val header = datagram.packet.peek().readUByte()
 
         val offline = header and RakHeader.VALID == 0u.toUByte()
-        if (offline) {
-            return handleOffline(datagram)
-        }
-
-        if (!offline) {
-            sessions[datagram.address]?.inbound?.trySend(datagram.packet)
+        when (offline) {
+            true -> handleOffline(datagram)
+            false -> sessions[datagram.address]?.inbound?.trySend(datagram.packet)
         }
     }
 
@@ -178,15 +178,78 @@ class RakServer(
 
                 log.info { "Establishing connection from ${datagram.address} with mtu size of ${packet.mtu}." }
 
-                this.sessions[datagram.address] = RakServerSession(
+                this.sessions[datagram.address] = RakSession(
                     coroutineContext,
                     this.outbound,
                     datagram.address as InetSocketAddress,
                     packet.client,
-                    packet.mtu,
-                    ::onDisconnect,
-                    ::onConnect
-                )
+                    packet.mtu
+                ) {
+                    fun RakSession.handleConnectionRequest(stream: Source) {
+                        val request = ConnectionRequest.deserialize(stream)
+
+                        val accepted = ConnectionRequestAccepted(
+                            clientAddress = Address.from(address),
+                            systemIndex = 0u,
+                            systemAddresses = emptyList(),
+                            requestTimestamp = request.clientTimestamp,
+                            timestamp = Clock.System.now().toEpochMilliseconds().toULong()
+                        )
+
+                        send(
+                            Buffer().also { ConnectionRequestAccepted.serialize(accepted, it) }.readByteString(),
+                            RakReliability.ReliableOrdered,
+                            RakPriority.Normal,
+                        )
+                    }
+
+                    fun RakSession.handleConnectedPing(stream: Source) {
+                        val ping = ConnectedPing.deserialize(stream)
+
+                        val pong = ConnectedPong(
+                            pingTimestamp = ping.timestamp,
+                            timestamp = Clock.System.now().toEpochMilliseconds().toULong(),
+                        )
+
+                        send(
+                            Buffer().also { ConnectedPong.serialize(pong, it) }.readByteString(),
+                            RakReliability.ReliableOrdered,
+                            RakPriority.Normal,
+                        )
+                    }
+
+                    onInbound {stream ->
+                        stream.preview {
+                            when (it.readUByte()) {
+                                RakPacketID.DISCONNECT -> {
+                                    val connected = state == RakSessionState.Connected
+                                    state = RakSessionState.Disconnecting
+                                    disconnect(send = false, connected = connected)
+                                    state = RakSessionState.Disconnected
+                                }
+
+                                RakPacketID.CONNECTION_REQUEST -> {
+                                    if (state == RakSessionState.Connecting) {
+                                        handleConnectionRequest(stream)
+                                    } else RakSession.log.warn { "Unexpected ConnectionRequest" }
+                                }
+
+                                RakPacketID.CONNECTED_PING -> handleConnectedPing(stream)
+                                RakPacketID.NEW_INCOMING_CONNECTION -> {
+                                    if (state == RakSessionState.Connecting) {
+                                        state = RakSessionState.Connected
+                                        onConnect(this)
+                                    } else RakSession.log.warn { "Unexpected NewIncomingConnection" }
+                                }
+
+                                else -> onPacket(stream)
+                            }
+                        }
+                    }
+
+                    onConnect = ::onConnect
+                    onDisconnect = ::onDisconnect
+                }
 
                 outbound.trySend(
                     Datagram(

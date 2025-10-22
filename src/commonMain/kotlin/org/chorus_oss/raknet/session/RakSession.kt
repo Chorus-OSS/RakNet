@@ -16,6 +16,7 @@ import kotlinx.io.bytestring.ByteString
 import kotlinx.io.readByteString
 import kotlinx.io.readUByte
 import kotlinx.io.write
+import org.chorus_oss.raknet.config.RakSessionConfig
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Frame
 import org.chorus_oss.raknet.types.*
@@ -26,33 +27,36 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.measureTime
 
-@OptIn(ExperimentalAtomicApi::class)
-abstract class RakSession(
+@OptIn(ExperimentalAtomicApi::class, ExperimentalUnsignedTypes::class)
+class RakSession(
     context: CoroutineContext,
     private val outbound: SendChannel<Datagram>,
     val address: InetSocketAddress,
     val guid: ULong,
     val mtu: UShort,
+    config: RakSessionConfig.() -> Unit = {}
 ) : CoroutineScope {
     override val coroutineContext: CoroutineContext = context
 
-    protected var state: RakSessionState = RakSessionState.Connecting
+    val config = RakSessionConfig().apply(config)
+
+    internal var state: RakSessionState = RakSessionState.Connecting
     private var lastUpdate: Instant = Clock.System.now()
 
     private val queued: Channel<Datagram> = Channel(Channel.UNLIMITED)
 
     private val receivedFrameSequences = mutableSetOf<UInt>()
     private val lostFrameSequences = mutableSetOf<UInt>()
-    private val inputHighestSequenceIndex = MutableList(32) { 0u }
+    private val inputHighestSequenceIndex = UIntArray(32)
     private val fragmentsQueue = mutableMapOf<UShort, MutableMap<UInt, Frame>>()
-    private val inputOrderIndex = MutableList(32) { 0u }
-    private val inputOrderingQueue = mutableMapOf<UByte, MutableMap<UInt, Frame>>(
-        *(Array(32) { Pair(0u.toUByte(), mutableMapOf()) }),
-    )
+
+    private val inputOrderIndex = UIntArray(32)
+    private val inputOrderingQueue = mutableMapOf<UByte, MutableMap<UInt, Frame>>()
+
     private var lastInputSequence: UInt? = null
 
-    private val outputOrderIndex = MutableList(32) { 0u }
-    private val outputSequenceIndex = MutableList(32) { 0u }
+    private val outputOrderIndex = UIntArray(32)
+    private val outputSequenceIndex = UIntArray(32)
 
     private val outFrames = Channel<Frame>(capacity = Channel.UNLIMITED)
 
@@ -149,7 +153,7 @@ abstract class RakSession(
         flush()
     }
 
-    protected fun disconnect(send: Boolean, connected: Boolean) {
+    internal fun disconnect(send: Boolean, connected: Boolean) {
         state = RakSessionState.Disconnecting
 
         if (send) {
@@ -166,7 +170,7 @@ abstract class RakSession(
             sendFrame(frame, RakPriority.Immediate)
         }
 
-        if (connected) onDisconnect()
+        if (connected) config.onDisconnect(this)
 
         state = RakSessionState.Disconnected
 
@@ -190,12 +194,6 @@ abstract class RakSession(
             }
         }
     }
-
-    protected abstract fun handle(stream: Source)
-
-    protected abstract fun onConnect()
-
-    protected abstract fun onDisconnect()
 
     private fun handleACK(stream: Source) {
         val ack = Ack.deserialize(stream)
@@ -271,21 +269,21 @@ abstract class RakSession(
 
             inputHighestSequenceIndex[frame.orderChannel.toInt()] = frame.sequenceIndex + 1u
 
-            return handle(Buffer().apply { write(frame.payload) })
+            return config.onInbound(this, Buffer().apply { write(frame.payload) })
         } else if (frame.reliability.isOrdered) {
             if (frame.orderIndex == inputOrderIndex[frame.orderChannel.toInt()]) {
                 inputHighestSequenceIndex[frame.orderChannel.toInt()] = 0u
                 inputOrderIndex[frame.orderChannel.toInt()] = frame.orderIndex + 1u
 
-                handle(Buffer().apply { write(frame.payload) })
+                config.onInbound(this, Buffer().apply { write(frame.payload) })
 
                 var index = inputOrderIndex[frame.orderChannel.toInt()]
-                val outOfOrderQueue = inputOrderingQueue[frame.orderChannel]!!
+                val outOfOrderQueue = inputOrderingQueue.getOrPut(frame.orderChannel) { mutableMapOf() }
 
                 while (true) {
                     val outOfOrderFrame = outOfOrderQueue[index] ?: break
 
-                    handle(Buffer().apply { write(outOfOrderFrame.payload) })
+                    config.onInbound(this, Buffer().apply { write(outOfOrderFrame.payload) })
                     outOfOrderQueue.remove(index)
 
                     index++
@@ -294,12 +292,12 @@ abstract class RakSession(
                 inputOrderingQueue[frame.orderChannel] = outOfOrderQueue
                 inputOrderIndex[frame.orderChannel.toInt()] = index
             } else if (frame.orderIndex > inputOrderIndex[frame.orderChannel.toInt()]) {
-                val unordered = inputOrderingQueue[frame.orderChannel] ?: return
+                val unordered = inputOrderingQueue.getOrPut(frame.orderChannel) { mutableMapOf() }
 
                 unordered[frame.orderIndex] = frame
             }
         } else {
-            return handle(Buffer().apply { write(frame.payload) })
+            return config.onInbound(this, Buffer().apply { write(frame.payload) })
         }
     }
 
@@ -442,6 +440,6 @@ abstract class RakSession(
     }
 
     companion object {
-        private val log = KotlinLogging.logger {}
+        internal val log = KotlinLogging.logger {}
     }
 }

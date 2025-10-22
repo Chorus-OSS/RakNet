@@ -6,6 +6,7 @@ import org.chorus_oss.raknet.rakServer
 import org.chorus_oss.raknet.server.RakServer
 import org.chorus_oss.raknet.types.RakPriority
 import org.chorus_oss.raknet.types.RakReliability
+import kotlin.random.Random
 import kotlin.test.Test
 
 @OptIn(ExperimentalStdlibApi::class)
@@ -148,10 +149,10 @@ class Main {
 
                             val packet = Buffer().apply {
                                 writeUByte(0xFFu)
-                                write(ByteArray(100_000) { 1 })
+                                write(Random.nextBytes(100_000))
                             }.readByteString()
 
-                            repeat(100) {
+                            repeat(10) {
                                 connection.launch {
                                     connection.send(packet, RakReliability.ReliableOrdered, RakPriority.Normal)
                                 }

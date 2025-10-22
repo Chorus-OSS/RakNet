@@ -6,17 +6,26 @@ import io.ktor.network.sockets.*
 import io.ktor.utils.io.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
+import kotlinx.datetime.Clock
 import kotlinx.io.Buffer
 import kotlinx.io.Source
+import kotlinx.io.bytestring.ByteString
+import kotlinx.io.readByteString
 import kotlinx.io.readUByte
 import org.chorus_oss.raknet.config.RakClientConfig
+import org.chorus_oss.raknet.protocol.packets.ConnectionRequest
+import org.chorus_oss.raknet.protocol.packets.ConnectionRequestAccepted
+import org.chorus_oss.raknet.protocol.packets.NewIncomingConnection
 import org.chorus_oss.raknet.protocol.packets.OpenConnectionReply1
 import org.chorus_oss.raknet.protocol.packets.OpenConnectionReply2
 import org.chorus_oss.raknet.protocol.packets.OpenConnectionRequest1
 import org.chorus_oss.raknet.protocol.packets.OpenConnectionRequest2
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.session.RakSession
+import org.chorus_oss.raknet.session.RakSessionState
 import org.chorus_oss.raknet.types.RakPacketID
+import org.chorus_oss.raknet.types.RakPriority
+import org.chorus_oss.raknet.types.RakReliability
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -40,7 +49,7 @@ class RakClient(
     private var attempts: Int = 0
     private var cookie: Int? = null
 
-    private var session: RakClientSession? = null
+    private var session: RakSession? = null
 
     private val timeout: Job = launch(CoroutineName("RakClientTimeout"), start = CoroutineStart.LAZY) {
         delay(config.connectionAttemptTimeout.milliseconds)
@@ -174,15 +183,64 @@ class RakClient(
 
         log.info { "Establishing connection to $remote with mtu size of ${config.mtu}" }
 
-        session = RakClientSession(
+        val session = RakSession(
             coroutineContext,
             outbound,
             remote,
             config.guid,
-            config.mtu,
-            ::onConnect,
-            ::onDisconnect,
+            config.mtu
+        ) {
+            fun RakSession.sendNewIncomingConnection(time: ULong) {
+                val packet = NewIncomingConnection(
+                    Address.from(address),
+                    List(10) { Address(ByteString(0, 0, 0, 0), 0) },
+                    time,
+                    Clock.System.now().toEpochMilliseconds().toULong()
+                )
+                send(
+                    Buffer().also { NewIncomingConnection.serialize(packet, it) }.readByteString(),
+                    RakReliability.ReliableOrdered,
+                    RakPriority.Immediate,
+                )
+            }
+
+            fun RakSession.handleConnectionRequestAccepted(stream: Source) {
+                val packet = ConnectionRequestAccepted.deserialize(stream)
+
+                state = RakSessionState.Connected
+                sendNewIncomingConnection(packet.timestamp)
+                config.onConnect(this)
+            }
+
+            onInbound { stream ->
+                stream.preview {
+                    when (it.readUByte()) {
+                        RakPacketID.CONNECTION_REQUEST_ACCEPTED -> handleConnectionRequestAccepted(stream)
+                        RakPacketID.CONNECTION_REQUEST_FAILED -> {
+                            state = RakSessionState.Disconnecting
+                            disconnect(send = false, connected = false)
+                            state = RakSessionState.Disconnected
+                            RakSession.log.warn { "Connection request failed" }
+                        }
+                        else -> onPacket(stream)
+                    }
+                }
+            }
+
+            onConnect = ::onConnect
+            onDisconnect = ::onDisconnect
+        }
+
+        val time = Clock.System.now().toEpochMilliseconds().toULong()
+
+        val packet = ConnectionRequest(session.guid, time)
+        session.send(
+            Buffer().also { ConnectionRequest.serialize(packet, it) }.readByteString(),
+            RakReliability.ReliableOrdered,
+            RakPriority.Immediate,
         )
+
+        this.session = session
     }
 
     private fun sendOpenConnectionRequest1() {
