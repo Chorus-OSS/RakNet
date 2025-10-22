@@ -108,9 +108,11 @@ class Main {
                             }
                         }
                         0xFFu -> {
+                            burstReceivedCount++
+
                             log.info { "Received burst: $burstReceivedCount" }
 
-                            burstReceivedCount++
+                            if (burstReceivedCount >= 10) connection.disconnect()
                         }
                         else -> log.info { "Unhandled packet, id: $id" }
                     }

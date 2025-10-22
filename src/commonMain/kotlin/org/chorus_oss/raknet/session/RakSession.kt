@@ -49,6 +49,12 @@ class RakSession(
     val ping: Long
         get() = lastPing.toEpochMilliseconds() - lastPong.toEpochMilliseconds()
 
+    val isConnected: Boolean
+        get() = state == RakSessionState.Connected
+
+    val isDisconnected: Boolean
+        get() = state == RakSessionState.Disconnected
+
     private val queued: Channel<Datagram> = Channel(Channel.UNLIMITED)
 
     private val receivedFrameSequences = mutableSetOf<UInt>()
@@ -174,7 +180,14 @@ class RakSession(
         flush()
     }
 
+    fun disconnect() {
+        val connected = state == RakSessionState.Connected
+        disconnect(connected, connected)
+    }
+
     internal fun disconnect(send: Boolean, connected: Boolean) {
+        if (state == RakSessionState.Disconnecting || state == RakSessionState.Disconnected) return
+
         state = RakSessionState.Disconnecting
 
         if (send) {
