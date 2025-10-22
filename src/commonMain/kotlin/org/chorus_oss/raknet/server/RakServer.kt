@@ -198,21 +198,6 @@ class RakServer(
                         )
                     }
 
-                    fun RakSession.handleConnectedPing(stream: Source) {
-                        val ping = ConnectedPing.deserialize(stream)
-
-                        val pong = ConnectedPong(
-                            pingTimestamp = ping.timestamp,
-                            timestamp = Clock.System.now().toEpochMilliseconds().toULong(),
-                        )
-
-                        send(
-                            Buffer().also { ConnectedPong.serialize(pong, it) }.readByteString(),
-                            RakReliability.ReliableOrdered,
-                            RakPriority.Normal,
-                        )
-                    }
-
                     onInbound { stream ->
                         stream.peek().use {
                             when (it.readUByte()) {
