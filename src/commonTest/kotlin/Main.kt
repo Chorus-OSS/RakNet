@@ -40,10 +40,6 @@ class Main {
                         }"
                     }
                 }
-
-                connection.onError { error ->
-                    log.error { "Error from ${connection.address}: $error" }
-                }
             }
 
             onDisconnect { connection ->
@@ -112,14 +108,10 @@ class Main {
 
                             log.info { "Received burst: $burstReceivedCount" }
 
-                            if (burstReceivedCount >= 10) connection.disconnect()
+                            if (burstReceivedCount >= 100) connection.disconnect()
                         }
                         else -> log.info { "Unhandled packet, id: $id" }
                     }
-                }
-
-                connection.onError { error ->
-                    log.error { "Error from ${connection.address}: $error" }
                 }
             }
 
@@ -154,7 +146,7 @@ class Main {
                                 write(Random.nextBytes(100_000))
                             }.readByteString()
 
-                            repeat(10) {
+                            repeat(100) {
                                 connection.launch {
                                     connection.send(packet, RakReliability.ReliableOrdered, RakPriority.Normal)
                                 }

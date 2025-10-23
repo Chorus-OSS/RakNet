@@ -210,7 +210,7 @@ class RakClient(
                     when (it.readUByte()) {
                         RakPacketID.CONNECTION_REQUEST_ACCEPTED -> handleConnectionRequestAccepted(stream)
                         RakPacketID.CONNECTION_REQUEST_FAILED -> {
-                            disconnect(send = false, connected = false)
+                            disconnect()
                             RakSession.log.warn { "Connection request failed" }
                         }
 

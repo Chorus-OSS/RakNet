@@ -16,14 +16,14 @@ data class Frame(
     var orderChannel: UByte = 0u,
     var splitSize: UInt = 0u,
     var splitID: UShort = 0u,
-    var splitIndex: UInt = 0u
+    var splitIndex: UInt = 0u,
 ) {
     val isSplit: Boolean
         get() = splitSize > 0u
 
-    val byteLength: Long
+    val size: Int
         get() {
-            var length: Long = 0
+            var length = 0
 
             length += 3
 

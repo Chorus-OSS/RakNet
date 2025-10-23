@@ -24,6 +24,10 @@ object RakConstants {
     const val AUTOFLUSH: Boolean = true
     const val AUTOFLUSH_INTERVAL_MS: Int = 10
 
+    const val CC_MAX_THRESHOLD: Int = 2000
+    const val CC_ADDITIONAL_VARIANCE: Int = 30
+    const val CC_SYN: Int = 10
+
     const val MAX_QUEUED_BYTES: Int = 67_108_864
 
     val MAGIC: ByteString = ByteString(0, -1, -1, 0, -2, -2, -2, -2, -3, -3, -3, -3, 18, 52, 86, 120)

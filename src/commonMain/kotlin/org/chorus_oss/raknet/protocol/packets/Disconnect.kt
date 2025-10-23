@@ -21,12 +21,5 @@ class Disconnect {
             stream.readUByte() // Packet ID
             return Disconnect()
         }
-
-        fun RakSession.handleDisconnect(stream: Source) {
-            deserialize(stream)
-
-            RakSession.log.trace { "RakSession closed by $address" }
-            disconnect(send = false, connected = true)
-        }
     }
 }

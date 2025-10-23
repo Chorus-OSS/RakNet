@@ -13,9 +13,6 @@ import kotlinx.io.Buffer
 import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.config.RakSessionConfig
 import org.chorus_oss.raknet.protocol.packets.*
-import org.chorus_oss.raknet.protocol.packets.ConnectedPing.Companion.handleConnectedPing
-import org.chorus_oss.raknet.protocol.packets.ConnectedPong.Companion.handleConnectedPong
-import org.chorus_oss.raknet.protocol.packets.Disconnect.Companion.handleDisconnect
 import org.chorus_oss.raknet.protocol.types.Frame
 import org.chorus_oss.raknet.types.*
 import kotlin.concurrent.atomics.AtomicInt
@@ -42,9 +39,9 @@ class RakSession(
     private var lastUpdate: Instant = Clock.System.now()
     private var lastTick: Instant = Clock.System.now()
 
-    internal var currPing: Instant = Instant.DISTANT_PAST
-    internal var lastPing: Instant = Instant.DISTANT_PAST
-    internal var lastPong: Instant = Instant.DISTANT_PAST
+    private var currPing: Instant = Instant.DISTANT_PAST
+    private var lastPing: Instant = Instant.DISTANT_PAST
+    private var lastPong: Instant = Instant.DISTANT_PAST
 
     val ping: Long
         get() = lastPing.toEpochMilliseconds() - lastPong.toEpochMilliseconds()
@@ -54,6 +51,8 @@ class RakSession(
 
     val isDisconnected: Boolean
         get() = state == RakSessionState.Disconnected
+
+    private val slidingWindow: RakSlidingWindow = RakSlidingWindow(mtu)
 
     private val queued: Channel<Datagram> = Channel(Channel.UNLIMITED)
 
@@ -70,28 +69,22 @@ class RakSession(
     private val outputOrderIndex = UIntArray(32)
     private val outputSequenceIndex = UIntArray(32)
 
-    private val outFrames = Channel<Frame>(capacity = Channel.UNLIMITED)
+    private val outFrames = ArrayDeque<Frame>()
 
-    private val outCache = mutableMapOf<UInt, List<Frame>>()
+    private val outCache = mutableMapOf<UInt, FrameSet>()
 
-    private val outSequenceID: AtomicInt = AtomicInt(0)
-    private val outSplitID: AtomicInt = AtomicInt(0)
-    private val outReliableIndex: AtomicInt = AtomicInt(0)
+    private var outSequenceID: UInt = 0u
+    private var outSplitID: UShort = 0u
+    private var outReliableIndex: UInt = 0u
 
     private val out = Channel<Pair<Frame, RakPriority>>(capacity = Channel.UNLIMITED)
 
     val inbound = Channel<Source>(capacity = Channel.UNLIMITED)
 
     var onPacket: (Source) -> Unit = {}
-    var onError: (Error) -> Unit = {}
 
     fun onPacket(fn: (Source) -> Unit): RakSession {
         this.onPacket = fn
-        return this
-    }
-
-    fun onError(fn: (Error) -> Unit): RakSession {
-        this.onError = fn
         return this
     }
 
@@ -176,6 +169,7 @@ class RakSession(
             )
         }
 
+        sendStale()
         sendQueue()
         flush()
     }
@@ -185,7 +179,7 @@ class RakSession(
         disconnect(connected, connected)
     }
 
-    internal fun disconnect(send: Boolean, connected: Boolean) {
+    private fun disconnect(send: Boolean, connected: Boolean) {
         if (state == RakSessionState.Disconnecting || state == RakSessionState.Disconnected) return
 
         state = RakSessionState.Disconnecting
@@ -223,14 +217,12 @@ class RakSession(
                 val id = header.toString(16).padStart(2, '0').uppercase()
 
                 log.warn { "Received unknown online packet \"0x$id\" from $address" }
-
-                onError(Error("Received unknown online packet \"0x$id\" from $address"))
             }
         }
     }
 
     private fun handlePacket(stream: Source) {
-        when (val id = stream.peek().readUByte()) {
+        when (stream.peek().readUByte()) {
             RakPacketID.CONNECTED_PING -> handleConnectedPing(stream)
             RakPacketID.CONNECTED_PONG -> handleConnectedPong(stream)
             RakPacketID.DISCONNECT -> handleDisconnect(stream)
@@ -241,12 +233,14 @@ class RakSession(
     private fun handleACK(stream: Source) {
         val ack = Ack.deserialize(stream)
 
-        for (sequence in ack.sequences) {
-            if (!outCache.contains(sequence)) {
-                log.debug { "Received ack for unknown sequence $sequence from $address" }
-            }
+        val now = Clock.System.now()
 
-            outCache.remove(sequence)
+        for (sequence in ack.sequences) {
+            outCache.remove(sequence)?.let { set ->
+                lastInputSequence?.let {
+                    slidingWindow.acked(now, set, it)
+                }
+            }
         }
     }
 
@@ -254,9 +248,9 @@ class RakSession(
         val nack = NAck.deserialize(stream)
 
         for (sequence in nack.sequences) {
-            val frames = outCache[sequence] ?: emptyList()
-            for (frame in frames) {
-                queueFrame(frame, RakPriority.Immediate)
+            outCache.remove(sequence)?.let {
+                sendImmediate(it.frames)
+                slidingWindow.nacked()
             }
         }
     }
@@ -266,8 +260,6 @@ class RakSession(
 
         if (receivedFrameSequences.contains(frameSet.sequence)) {
             log.warn { "Received duplicate frameset ${frameSet.sequence} from $address" }
-
-            return onError(Error("Received duplicate frameset ${frameSet.sequence} from $address"))
         }
 
         receivedFrameSequences.add(frameSet.sequence)
@@ -275,8 +267,6 @@ class RakSession(
         lastInputSequence?.let {
             if (frameSet.sequence <= it) {
                 log.warn { "Received out of order frameset ${frameSet.sequence} from $address. expected ${it + 1u}" }
-
-                return onError(Error("Received out of order frameset ${frameSet.sequence} from $address"))
             }
         }
 
@@ -284,9 +274,7 @@ class RakSession(
 
         lastInputSequence?.let {
             if (frameSet.sequence - it > 1u) {
-                for (i in it + 1u until frameSet.sequence) {
-                    lostFrameSequences.add(i)
-                }
+                lostFrameSequences.addAll(it + 1u until frameSet.sequence)
             }
         }
 
@@ -306,8 +294,6 @@ class RakSession(
                 frame.orderIndex < (inputOrderIndex[frame.orderChannel.toInt()])
             ) {
                 log.warn { "Received out of order frame ${frame.sequenceIndex} from $address" }
-
-                return onError(Error("Received out of order frame ${frame.sequenceIndex} from $address"))
             }
 
             inputHighestSequenceIndex[frame.orderChannel.toInt()] = frame.sequenceIndex + 1u
@@ -384,11 +370,12 @@ class RakSession(
         val maxSize = (mtu - RakConstants.DGRAM_MTU_OVERHEAD).toInt()
         val splitSize = (frame.payload.size + maxSize - 1) / maxSize
 
-        frame.reliableIndex = outReliableIndex.fetchAndIncrement().toUInt()
+        frame.reliableIndex = outReliableIndex++
 
         if (frame.payload.size > maxSize.toLong()) {
-            val splitID = outSplitID.fetchAndIncrement().toUShort()
+            val splitID = outSplitID++
 
+            val splitFrames = mutableListOf<Frame>()
             for (i in 0 until splitSize) {
                 val start = i * maxSize
                 val end = minOf(start + maxSize, frame.payload.size)
@@ -400,52 +387,109 @@ class RakSession(
                     splitSize = splitSize.toUInt()
                 )
 
-                queueFrame(nFrame, priority)
+                splitFrames.add(nFrame)
             }
+
+            queueFrames(splitFrames, priority)
         } else {
-            queueFrame(frame, priority)
+            queueFrames(listOf(frame), priority)
         }
     }
 
-    private fun queueFrame(frame: Frame, priority: RakPriority) {
+    private fun queueFrames(frame: List<Frame>, priority: RakPriority) {
         when (priority) {
             RakPriority.Immediate -> sendImmediate(frame)
-            else -> outFrames.trySend(frame)
+            else -> outFrames.addAll(frame)
         }
     }
 
     private fun sendQueue() {
-        val frames = generateSequence { outFrames.tryReceive().getOrNull() }
+        var bandwidth = slidingWindow.transmissionBandwidth
+
+        val frames = generateSequence {
+            outFrames.firstOrNull()?.let {
+                if (bandwidth < it.size) null
+                else {
+                    @Suppress("AssignedValueIsNeverRead")
+                    bandwidth -= it.size
+                    outFrames.removeFirstOrNull()
+                }
+            }
+        }.toList()
+
+        val sets = createFrameSets(frames)
+        for (set in sets) {
+            sendFrameSet(set, queued)
+        }
+    }
+
+    private fun sendStale() {
+        if (outCache.isEmpty()) return
+
+        val now = Clock.System.now()
+
+        var resent = false
+        var bandwidth = slidingWindow.retransmissionBandwidth
+
+        for (set in outCache.values.toList()) {
+            if (set.resend <= now) {
+                if (bandwidth < set.size) break
+                bandwidth -= set.size
+                resent = true
+
+                sendFrameSet(set, queued)
+                outCache.remove(set.sequence)
+            }
+        }
+
+        if (resent) {
+            slidingWindow.resent(outSequenceID)
+        }
+    }
+
+    private fun createFrameSets(frames: List<Frame>): List<FrameSet> {
+        val sets = mutableListOf<FrameSet>()
 
         val max = (mtu - RakConstants.DGRAM_MTU_OVERHEAD).toLong()
 
         val batch = mutableListOf<Frame>()
         var size = RakConstants.DGRAM_HEADER_SIZE.toLong()
         for (frame in frames) {
-            if (size + frame.byteLength > max) {
-                sendFrames(batch)
+            if (size + frame.size > max) {
+                sets.add(
+                    FrameSet(
+                        sequence = outSequenceID++,
+                        frames = batch.toList(),
+                    )
+                )
                 batch.clear()
                 size = RakConstants.DGRAM_HEADER_SIZE.toLong()
             }
 
-            size += frame.byteLength
+            size += frame.size
             batch.add(frame)
         }
 
-        if (batch.isNotEmpty()) sendFrames(batch)
-    }
-
-    private fun sendFrames(frames: List<Frame>) {
-        if (frames.isEmpty()) return
-
-        val set = FrameSet(
-            sequence = outSequenceID.fetchAndIncrement().toUInt(),
-            frames = frames.toList(),
+        if (batch.isNotEmpty()) sets.add(
+            FrameSet(
+                sequence = outSequenceID++,
+                frames = batch.toList(),
+            )
         )
 
-        outCache[set.sequence] = set.frames.toList()
+        return sets
+    }
 
-        queued.trySend(
+    private fun sendFrameSet(set: FrameSet, channel: SendChannel<Datagram> = queued) {
+        if (set.frames.any { it.reliability.isReliable }) {
+            set.resend = Clock.System.now() + slidingWindow.retransmissionTimeOut
+            if (!outCache.contains(set.sequence)) {
+                slidingWindow.sent(set)
+            }
+            outCache[set.sequence] = set
+        }
+
+        channel.trySend(
             Datagram(
                 packet = Buffer().also {
                     FrameSet.serialize(set, it)
@@ -455,22 +499,12 @@ class RakSession(
         )
     }
 
-    private fun sendImmediate(frame: Frame) {
-        val set = FrameSet(
-            sequence = outSequenceID.fetchAndIncrement().toUInt(),
-            frames = listOf(frame),
-        )
+    private fun sendImmediate(frames: List<Frame>) {
+        val sets = createFrameSets(frames)
 
-        outCache[set.sequence] = set.frames.toList()
-
-        outbound.trySend(
-            Datagram(
-                packet = Buffer().also {
-                    FrameSet.serialize(set, it)
-                },
-                address = address
-            )
-        )
+        for (set in sets) {
+            sendFrameSet(set, outbound)
+        }
     }
 
     fun send(packet: ByteString, reliability: RakReliability, priority: RakPriority) {
@@ -479,6 +513,38 @@ class RakSession(
                 payload = packet,
                 reliability = reliability,
             ) to priority
+        )
+    }
+
+    private fun handleDisconnect(stream: Source) {
+        Disconnect.deserialize(stream)
+
+        log.trace { "RakSession closed by $address" }
+        disconnect(send = false, connected = true)
+    }
+
+    private fun handleConnectedPong(stream: Source) {
+        val pong = ConnectedPong.deserialize(stream)
+
+        val ping = Instant.fromEpochMilliseconds(pong.timestamp.toLong())
+        if (this.currPing == ping) {
+            this.lastPing = this.currPing
+            this.lastPong = Clock.System.now()
+        }
+    }
+
+    private fun handleConnectedPing(stream: Source) {
+        val ping = ConnectedPing.deserialize(stream)
+
+        val pong = ConnectedPong(
+            pingTimestamp = ping.timestamp,
+            timestamp = Clock.System.now().toEpochMilliseconds().toULong()
+        )
+
+        send(
+            Buffer().apply { ConnectedPong.serialize(pong, this) }.readByteString(),
+            RakReliability.Unreliable,
+            RakPriority.Immediate,
         )
     }
 
