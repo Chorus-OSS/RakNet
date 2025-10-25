@@ -8,15 +8,15 @@ import org.chorus_oss.raknet.types.RakFlags
 import org.chorus_oss.raknet.types.RakReliability
 
 data class Frame(
-    var reliability: RakReliability,
-    var payload: ByteString,
-    var reliableIndex: UInt = 0u,
-    var sequenceIndex: UInt = 0u,
-    var orderIndex: UInt = 0u,
-    var orderChannel: UByte = 0u,
-    var splitSize: UInt = 0u,
-    var splitID: UShort = 0u,
-    var splitIndex: UInt = 0u,
+    val reliability: RakReliability,
+    val payload: ByteString,
+    val reliableIndex: UInt = 0u,
+    val sequenceIndex: UInt = 0u,
+    val orderIndex: UInt = 0u,
+    val orderChannel: UByte = 0u,
+    val splitSize: UInt = 0u,
+    val splitID: UShort = 0u,
+    val splitIndex: UInt = 0u,
 ) {
     val isSplit: Boolean
         get() = splitSize > 0u

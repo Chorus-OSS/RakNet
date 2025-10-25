@@ -83,7 +83,13 @@ class RakSession(
 
     val inbound = Channel<Source>(capacity = Channel.UNLIMITED)
 
+    var onTick: () -> Unit = {}
     var onPacket: (Source) -> Unit = {}
+
+    fun onTick(fn: () -> Unit): RakSession {
+        this.onTick = fn
+        return this
+    }
 
     fun onPacket(fn: (Source) -> Unit): RakSession {
         this.onPacket = fn
@@ -115,6 +121,12 @@ class RakSession(
                 currPing = now
             }
 
+            if (lastUpdate + 15000.milliseconds <= now) {
+                log.warn { "Detected stale connection from $address, disconnecting..." }
+
+                disconnect(send = true, connected = true)
+            }
+
             yield()
         }
     }
@@ -130,12 +142,7 @@ class RakSession(
             return
         }
 
-        if (lastUpdate.plus(15000.milliseconds) < Clock.System.now()) {
-            log.warn { "Detected stale connection from $address, disconnecting..." }
-
-            return disconnect(send = true, connected = true)
-        }
-
+        onTick.invoke()
 
         if (receivedFrameSequences.isNotEmpty()) {
             val ack = Ack(
