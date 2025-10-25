@@ -48,7 +48,7 @@ class RakClient(
 
     private val timeout: Job = launch(CoroutineName("RakClientTimeout"), start = CoroutineStart.LAZY) {
         delay(config.connectionAttemptTimeout.milliseconds)
-        log.warn { "RakClient connection timed out after ${config.timeout}ms" }
+        log.debug { "RakClient connection timed out after ${config.timeout}ms" }
         stop()
     }
 
@@ -70,7 +70,7 @@ class RakClient(
         }
 
         if (attempts >= config.connectionAttemptMax) {
-            log.warn { "RakClient connection failed after $attempts attempts" }
+            log.debug { "RakClient connection failed after $attempts attempts" }
             stop()
         }
     }
@@ -131,7 +131,7 @@ class RakClient(
         withTimeoutOrNull(timeout) {
             stopped.join()
         } ?: run {
-            log.warn { "RakClient closing timed out after ${timeout}ms, force-closing" }
+            log.debug { "RakClient closing timed out after ${timeout}ms, force-closing" }
             cancel()
         }
     }
@@ -150,22 +150,22 @@ class RakClient(
                 RakPacketID.OPEN_CONNECTION_REPLY_1 -> handleOpenConnectionReply1(datagram.packet)
                 RakPacketID.OPEN_CONNECTION_REPLY_2 -> handleOpenConnectionReply2(datagram.packet)
                 RakPacketID.INCOMPATIBLE_PROTOCOL_VERSION -> {
-                    log.warn { "RakClient connection failed due to incompatible protocol version" }
+                    log.debug { "RakClient connection failed due to incompatible protocol version" }
                     stop()
                 }
 
                 RakPacketID.ALREADY_CONNECTED -> {
-                    log.warn { "RakClient connection failed because this IP is already connected" }
+                    log.debug { "RakClient connection failed because this IP is already connected" }
                     stop()
                 }
 
                 RakPacketID.NO_FREE_INCOMING_CONNECTIONS -> {
-                    log.warn { "RakClient connection failed because the server has no free connections" }
+                    log.debug { "RakClient connection failed because the server has no free connections" }
                     stop()
                 }
 
                 RakPacketID.IP_RECENTLY_CONNECTED -> {
-                    log.warn { "RakClient connection failed because this IP recently connected" }
+                    log.debug { "RakClient connection failed because this IP recently connected" }
                     stop()
                 }
             }
@@ -176,7 +176,7 @@ class RakClient(
         timeout.cancel()
         request.cancel()
 
-        log.info { "Establishing connection to $remote with mtu size of ${config.mtu}" }
+        log.debug { "Establishing connection to $remote with mtu size of ${config.mtu}" }
 
         val session = RakSession(
             coroutineContext,
@@ -213,7 +213,7 @@ class RakClient(
                         RakPacketID.CONNECTION_REQUEST_ACCEPTED -> handleConnectionRequestAccepted(stream)
                         RakPacketID.CONNECTION_REQUEST_FAILED -> {
                             disconnect()
-                            RakSession.log.warn { "Connection request failed" }
+                            RakSession.log.debug { "Connection request failed" }
                         }
 
                         else -> onPacket(stream)
@@ -280,7 +280,7 @@ class RakClient(
         val packet = OpenConnectionReply2.deserialize(stream)
 
         if (packet.encryption) {
-            log.warn { "RakClient failed to connect, security exception" }
+            log.debug { "RakClient failed to connect, security exception" }
             stop()
         } else {
             config.mtu = packet.mtu

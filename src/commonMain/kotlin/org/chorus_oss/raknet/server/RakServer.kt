@@ -118,7 +118,7 @@ class RakServer(
                         magic = config.magic,
                     )
 
-                    log.warn { "Refusing connection from ${datagram.address} due to incompatible protocol version v${packet.protocol}, expected v${RakConstants.PROTOCOL}." }
+                    log.debug { "Refusing connection from ${datagram.address} due to incompatible protocol version v${packet.protocol}, expected v${RakConstants.PROTOCOL}." }
 
                     outbound.trySend(
                         Datagram(
@@ -154,15 +154,15 @@ class RakServer(
                 val packet = OpenConnectionRequest2.deserialize(datagram.packet)
 
                 if (packet.address.port != this.port) {
-                    return log.warn { "Refusing connection from ${datagram.address} due to mismatched port." }
+                    return log.debug { "Refusing connection from ${datagram.address} due to mismatched port." }
                 }
 
                 if (packet.mtu !in config.minMTUSize..config.maxMTUSize) {
-                    return log.warn { "Refusing connection from ${datagram.address} due to invalid mtu size." }
+                    return log.debug { "Refusing connection from ${datagram.address} due to invalid mtu size." }
                 }
 
                 if (this.sessions.contains(datagram.address)) {
-                    return log.warn { "Refusing connection from ${datagram.address} due to already established connection." }
+                    return log.debug { "Refusing connection from ${datagram.address} due to already established connection." }
                 }
 
                 val reply = OpenConnectionReply2(
@@ -173,7 +173,7 @@ class RakServer(
                     encryption = false
                 )
 
-                log.info { "Establishing connection from ${datagram.address} with mtu size of ${packet.mtu}." }
+                log.debug { "Establishing connection from ${datagram.address} with mtu size of ${packet.mtu}." }
 
                 this.sessions[datagram.address] = RakSession(
                     coroutineContext,
@@ -206,14 +206,14 @@ class RakServer(
                                 RakPacketID.CONNECTION_REQUEST -> {
                                     if (state == RakSessionState.Connecting) {
                                         handleConnectionRequest(stream)
-                                    } else RakSession.log.warn { "Unexpected ConnectionRequest" }
+                                    } else RakSession.log.debug { "Unexpected ConnectionRequest" }
                                 }
 
                                 RakPacketID.NEW_INCOMING_CONNECTION -> {
                                     if (state == RakSessionState.Connecting) {
                                         state = RakSessionState.Connected
                                         onConnect(this)
-                                    } else RakSession.log.warn { "Unexpected NewIncomingConnection" }
+                                    } else RakSession.log.debug { "Unexpected NewIncomingConnection" }
                                 }
 
                                 else -> onPacket(stream)

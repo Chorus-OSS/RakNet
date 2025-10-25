@@ -122,7 +122,7 @@ class RakSession(
             }
 
             if (lastUpdate + 15000.milliseconds <= now) {
-                log.warn { "Detected stale connection from $address, disconnecting..." }
+                log.debug { "Detected stale connection from $address, disconnecting..." }
 
                 disconnect(send = true, connected = true)
             }
@@ -224,7 +224,7 @@ class RakSession(
                 flags hasFlag RakFlags.NACK -> handleNACK(stream)
                 else -> handleFrameSet(stream)
             }
-        } else log.warn { "Received unknown online packet ${flags.toHexString(HexFormat.UpperCase)} from $address" }
+        } else log.debug { "Received unknown online packet ${flags.toHexString(HexFormat.UpperCase)} from $address" }
     }
 
     private fun handlePacket(stream: Source) {
@@ -265,14 +265,14 @@ class RakSession(
         val frameSet = FrameSet.deserialize(stream)
 
         if (receivedFrameSequences.contains(frameSet.sequence)) {
-            log.warn { "Received duplicate frameset ${frameSet.sequence} from $address" }
+            log.debug { "Received duplicate frameset ${frameSet.sequence} from $address" }
         }
 
         receivedFrameSequences.add(frameSet.sequence)
 
         lastInputSequence?.let {
             if (frameSet.sequence <= it) {
-                log.warn { "Received out of order frameset ${frameSet.sequence} from $address. expected ${it + 1u}" }
+                log.debug { "Received out of order frameset ${frameSet.sequence} from $address. expected ${it + 1u}" }
             }
         }
 
@@ -299,7 +299,7 @@ class RakSession(
                 frame.sequenceIndex < (inputHighestSequenceIndex[frame.orderChannel.toInt()]) ||
                 frame.orderIndex < (inputOrderIndex[frame.orderChannel.toInt()])
             ) {
-                log.warn { "Received out of order frame ${frame.sequenceIndex} from $address" }
+                log.debug { "Received out of order frame ${frame.sequenceIndex} from $address" }
             }
 
             inputHighestSequenceIndex[frame.orderChannel.toInt()] = frame.sequenceIndex + 1u
@@ -560,7 +560,7 @@ class RakSession(
     private fun handleDisconnect(stream: Source) {
         Disconnect.deserialize(stream)
 
-        log.trace { "RakSession closed by $address" }
+        log.debug { "RakSession closed by $address" }
         disconnect(send = false, connected = true)
     }
 
