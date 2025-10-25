@@ -30,7 +30,8 @@ class RakSlidingWindow(private val mtu: UShort) {
                 return RakConstants.CC_MAX_THRESHOLD.milliseconds
             }
 
-            val threshold = 2.0 * roundTripTimeEstimate + 4.0 * roundTripTimeDeviation + RakConstants.CC_ADDITIONAL_VARIANCE.milliseconds
+            val threshold =
+                2.0 * roundTripTimeEstimate + 4.0 * roundTripTimeDeviation + RakConstants.CC_ADDITIONAL_VARIANCE.milliseconds
             return threshold.coerceAtMost(RakConstants.CC_MAX_THRESHOLD.milliseconds)
         }
 
@@ -42,7 +43,7 @@ class RakSlidingWindow(private val mtu: UShort) {
 
     fun resent(lastSequence: UInt) {
         if (congestionRecovery && congestionWindow > mtu.toDouble() * 2.0) {
-            slowStartThreshold = max(congestionWindow  * 0.5, mtu.toDouble())
+            slowStartThreshold = max(congestionWindow * 0.5, mtu.toDouble())
             congestionWindow = mtu.toDouble()
 
             congestionRecoverySequence = lastSequence

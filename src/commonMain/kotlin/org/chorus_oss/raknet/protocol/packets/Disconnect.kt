@@ -5,7 +5,6 @@ import kotlinx.io.Source
 import kotlinx.io.readUByte
 import kotlinx.io.writeUByte
 import org.chorus_oss.raknet.protocol.RakPacketCodec
-import org.chorus_oss.raknet.session.RakSession
 import org.chorus_oss.raknet.types.RakPacketID
 
 class Disconnect {

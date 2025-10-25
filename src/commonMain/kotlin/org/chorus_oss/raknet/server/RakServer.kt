@@ -135,7 +135,8 @@ class RakServer(
                     guid = config.guid,
                     magic = config.magic,
                     cookie = null,
-                    mtu = (packet.mtu + RakConstants.UDP_HEADER_SIZE + datagram.address.overhead).toUShort().coerceIn(config.minMTUSize, config.maxMTUSize)
+                    mtu = (packet.mtu + RakConstants.UDP_HEADER_SIZE + datagram.address.overhead).toUShort()
+                        .coerceIn(config.minMTUSize, config.maxMTUSize)
                 )
 
                 outbound.trySend(

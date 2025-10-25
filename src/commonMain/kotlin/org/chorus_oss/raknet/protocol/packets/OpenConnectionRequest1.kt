@@ -1,7 +1,6 @@
 package org.chorus_oss.raknet.protocol.packets
 
-import io.ktor.utils.io.core.remaining
-import io.ktor.utils.io.core.size
+import io.ktor.utils.io.core.*
 import kotlinx.io.*
 import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakPacketCodec

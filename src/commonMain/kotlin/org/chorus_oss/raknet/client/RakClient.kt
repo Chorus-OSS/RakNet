@@ -238,7 +238,8 @@ class RakClient(
     }
 
     private fun sendOpenConnectionRequest1() {
-        val mtu = (config.mtuSizes[(attempts / 4).coerceAtLeast(config.mtuSizes.size - 1)] - remote.overhead - RakConstants.UDP_HEADER_SIZE).toUShort()
+        val mtu =
+            (config.mtuSizes[(attempts / 4).coerceAtLeast(config.mtuSizes.size - 1)] - remote.overhead - RakConstants.UDP_HEADER_SIZE).toUShort()
         val magic = config.magic
         val protocol = config.protocol
 
