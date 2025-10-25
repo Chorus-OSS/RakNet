@@ -1,19 +1,16 @@
 package org.chorus_oss.raknet.protocol.packets
 
 import kotlinx.io.*
-import org.chorus_oss.raknet.protocol.RakPacketCodec
+import org.chorus_oss.raknet.protocol.RakCodec
 import org.chorus_oss.raknet.protocol.types.UMedium
-import org.chorus_oss.raknet.types.RakPacketID
+import org.chorus_oss.raknet.types.RakFlags
 
 data class Ack(
     val sequences: List<UInt>
 ) {
-    companion object : RakPacketCodec<Ack> {
-        override val id: UByte
-            get() = RakPacketID.ACK
-
+    companion object : RakCodec<Ack> {
         override fun serialize(value: Ack, stream: Sink) {
-            stream.writeUByte(id) // Packet ID
+            stream.writeUByte(RakFlags.VALID or RakFlags.ACK)
 
             val sorted = value.sequences.sorted()
 
@@ -41,7 +38,7 @@ data class Ack(
         }
 
         override fun deserialize(stream: Source): Ack {
-            stream.readUByte() // Packet ID
+            stream.readUByte()
 
             val size = stream.readUShort().toInt()
 

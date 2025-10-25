@@ -16,9 +16,11 @@ import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.session.RakSession
 import org.chorus_oss.raknet.session.RakSessionState
+import org.chorus_oss.raknet.types.RakConstants
 import org.chorus_oss.raknet.types.RakPacketID
 import org.chorus_oss.raknet.types.RakPriority
 import org.chorus_oss.raknet.types.RakReliability
+import org.chorus_oss.raknet.utils.overhead
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -236,7 +238,7 @@ class RakClient(
     }
 
     private fun sendOpenConnectionRequest1() {
-        val mtu = config.mtuSizes[(attempts / 4).coerceAtLeast(config.mtuSizes.size - 1)]
+        val mtu = (config.mtuSizes[(attempts / 4).coerceAtLeast(config.mtuSizes.size - 1)] - remote.overhead - RakConstants.UDP_HEADER_SIZE).toUShort()
         val magic = config.magic
         val protocol = config.protocol
 

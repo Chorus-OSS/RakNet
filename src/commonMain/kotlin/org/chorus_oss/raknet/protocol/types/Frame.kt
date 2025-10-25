@@ -4,7 +4,7 @@ import io.ktor.utils.io.core.*
 import kotlinx.io.*
 import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakCodec
-import org.chorus_oss.raknet.types.RakHeader
+import org.chorus_oss.raknet.types.RakFlags
 import org.chorus_oss.raknet.types.RakReliability
 
 data class Frame(
@@ -42,7 +42,7 @@ data class Frame(
             for (frame in value) {
                 var flags = (frame.reliability.ordinal shl 5).toUByte()
                 if (frame.isSplit) {
-                    flags = flags or RakHeader.SPLIT
+                    flags = flags or RakFlags.SPLIT
                 }
                 stream.writeUByte(flags)
 
@@ -77,7 +77,7 @@ data class Frame(
             while (!stream.endOfInput) {
                 val header = stream.readUByte()
                 val reliability = RakReliability.entries[((header.toUInt() and 0xE0u) shr 5).toInt()]
-                val split = (header and RakHeader.SPLIT) != 0u.toUByte()
+                val split = (header and RakFlags.SPLIT) != 0u.toUByte()
 
                 val length = (stream.readUShort().toInt() + 7) shr 3
 

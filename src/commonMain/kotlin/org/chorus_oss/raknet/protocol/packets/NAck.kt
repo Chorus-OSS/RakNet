@@ -1,19 +1,16 @@
 package org.chorus_oss.raknet.protocol.packets
 
 import kotlinx.io.*
-import org.chorus_oss.raknet.protocol.RakPacketCodec
+import org.chorus_oss.raknet.protocol.RakCodec
 import org.chorus_oss.raknet.protocol.types.UMedium
-import org.chorus_oss.raknet.types.RakPacketID
+import org.chorus_oss.raknet.types.RakFlags
 
 data class NAck(
     val sequences: List<UInt>
 ) {
-    companion object : RakPacketCodec<NAck> {
-        override val id: UByte
-            get() = RakPacketID.NACK
-
+    companion object : RakCodec<NAck> {
         override fun serialize(value: NAck, stream: Sink) {
-            stream.writeUByte(id) // Packet ID
+            stream.writeUByte(RakFlags.VALID or RakFlags.NACK) // Packet ID
 
             val sorted = value.sequences.sorted()
 

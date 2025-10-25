@@ -31,16 +31,6 @@ enum class RakReliability {
 
     val isOrdered: Boolean
         get() = when (this) {
-            UnreliableSequenced,
-            ReliableOrdered,
-            ReliableSequenced,
-            ReliableOrderedWithAckReceipt -> true
-
-            else -> false
-        }
-
-    val isOrderExclusive: Boolean
-        get() = when (this) {
             ReliableOrdered,
             ReliableOrderedWithAckReceipt -> true
 

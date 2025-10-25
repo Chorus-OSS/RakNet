@@ -16,6 +16,7 @@ import org.chorus_oss.raknet.protocol.types.Address
 import org.chorus_oss.raknet.session.RakSession
 import org.chorus_oss.raknet.session.RakSessionState
 import org.chorus_oss.raknet.types.*
+import org.chorus_oss.raknet.utils.overhead
 import kotlin.coroutines.CoroutineContext
 
 class RakServer(
@@ -77,7 +78,7 @@ class RakServer(
     private fun handle(datagram: Datagram) {
         val header = datagram.packet.peek().readUByte()
 
-        val offline = header and RakHeader.VALID == 0u.toUByte()
+        val offline = header and RakFlags.VALID == 0u.toUByte()
         when (offline) {
             true -> handleOffline(datagram)
             false -> sessions[datagram.address]?.inbound?.trySend(datagram.packet)
@@ -134,7 +135,7 @@ class RakServer(
                     guid = config.guid,
                     magic = config.magic,
                     cookie = null,
-                    mtu = (packet.mtu + RakConstants.UDP_HEADER_SIZE).toUShort().coerceAtMost(config.maxMTUSize)
+                    mtu = (packet.mtu + RakConstants.UDP_HEADER_SIZE + datagram.address.overhead).toUShort().coerceIn(config.minMTUSize, config.maxMTUSize)
                 )
 
                 outbound.trySend(

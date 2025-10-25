@@ -15,9 +15,9 @@ import org.chorus_oss.raknet.config.RakSessionConfig
 import org.chorus_oss.raknet.protocol.packets.*
 import org.chorus_oss.raknet.protocol.types.Frame
 import org.chorus_oss.raknet.types.*
-import kotlin.concurrent.atomics.AtomicInt
+import org.chorus_oss.raknet.utils.hasFlag
+import org.chorus_oss.raknet.utils.overhead
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.concurrent.atomics.fetchAndIncrement
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -27,10 +27,12 @@ class RakSession(
     private val outbound: SendChannel<Datagram>,
     val address: InetSocketAddress,
     val guid: ULong,
-    val mtu: UShort,
+    mtu: UShort,
     config: RakSessionConfig.() -> Unit = {}
 ) : CoroutineScope {
     override val coroutineContext: CoroutineContext = context
+
+    val mtu: UShort = (mtu - RakConstants.UDP_HEADER_SIZE - address.overhead).toUShort()
 
     internal val config = RakSessionConfig().apply(config)
 
@@ -208,17 +210,14 @@ class RakSession(
     private fun inbound(stream: Source) {
         lastUpdate = Clock.System.now()
 
-        when (val header = stream.peek().readUByte() and 0xF0.toUByte()) {
-            RakPacketID.ACK -> handleACK(stream)
-            RakPacketID.NACK -> handleNACK(stream)
-            RakPacketID.FRAME_SET -> handleFrameSet(stream)
-
-            else -> {
-                val id = header.toString(16).padStart(2, '0').uppercase()
-
-                log.warn { "Received unknown online packet \"0x$id\" from $address" }
+        val flags = stream.peek().readUByte()
+        if (flags hasFlag RakFlags.VALID) {
+            when {
+                flags hasFlag RakFlags.ACK -> handleACK(stream)
+                flags hasFlag RakFlags.NACK -> handleNACK(stream)
+                else -> handleFrameSet(stream)
             }
-        }
+        } else log.warn { "Received unknown online packet ${flags.toHexString(HexFormat.UpperCase)} from $address" }
     }
 
     private fun handlePacket(stream: Source) {
@@ -299,7 +298,7 @@ class RakSession(
             inputHighestSequenceIndex[frame.orderChannel.toInt()] = frame.sequenceIndex + 1u
 
             return handlePacket(Buffer().apply { write(frame.payload) })
-        } else if (frame.reliability.isOrdered) {
+        } else if (frame.reliability.isOrdered || frame.reliability.isSequenced) {
             if (frame.orderIndex == inputOrderIndex[frame.orderChannel.toInt()]) {
                 inputHighestSequenceIndex[frame.orderChannel.toInt()] = 0u
                 inputOrderIndex[frame.orderChannel.toInt()] = frame.orderIndex + 1u
@@ -357,43 +356,68 @@ class RakSession(
     }
 
     private fun sendFrame(frame: Frame, priority: RakPriority) {
-        val orderChannel = frame.orderChannel.toInt()
-
-        if (frame.reliability.isSequenced) {
-            frame.orderIndex = outputOrderIndex[orderChannel]
-            frame.sequenceIndex = outputSequenceIndex[orderChannel]++
-        } else if (frame.reliability.isOrderExclusive) {
-            frame.orderIndex = outputOrderIndex[orderChannel]++
-            outputSequenceIndex[orderChannel] = 0u
-        }
-
         val maxSize = (mtu - RakConstants.DGRAM_MTU_OVERHEAD).toInt()
-        val splitSize = (frame.payload.size + maxSize - 1) / maxSize
 
-        frame.reliableIndex = outReliableIndex++
+        val orderChannel = frame.orderChannel
+        var reliability: RakReliability = frame.reliability
+        var splitID: UShort = 0u
 
-        if (frame.size > maxSize) {
-            val splitID = outSplitID++
+        val payloads = if (frame.size > maxSize) {
+            reliability = when (reliability) {
+                RakReliability.Unreliable -> RakReliability.Reliable
+                RakReliability.UnreliableSequenced -> RakReliability.ReliableSequenced
+                RakReliability.UnreliableWithAckReceipt -> RakReliability.ReliableWithAckReceipt
+                else -> reliability
+            }
+            splitID = outSplitID++
 
-            val splitFrames = mutableListOf<Frame>()
-            for (i in 0 until splitSize) {
-                val start = i * maxSize
+            val splitSize = (frame.payload.size + maxSize - 1) / maxSize
+
+            (0 until splitSize).map {
+                val start = it * maxSize
                 val end = minOf(start + maxSize, frame.payload.size)
 
-                val nFrame = frame.copy(
-                    payload = frame.payload.substring(start, end),
-                    splitIndex = i.toUInt(),
-                    splitID = splitID,
-                    splitSize = splitSize.toUInt()
-                )
+                frame.payload.substring(start, end)
+            }
+        } else {
+            listOf(frame.payload)
+        }
 
-                splitFrames.add(nFrame)
+        var orderIndex = 0u
+        var sequenceIndex = 0u
+        if (frame.reliability.isSequenced) {
+            orderIndex = outputOrderIndex[orderChannel.toInt()]
+            sequenceIndex = outputSequenceIndex[orderChannel.toInt()]++
+        } else if (frame.reliability.isOrdered) {
+            orderIndex = outputOrderIndex[orderChannel.toInt()]++
+            outputSequenceIndex[orderChannel.toInt()] = 0u
+        }
+
+        val frames = payloads.mapIndexed { i, payload ->
+            var frame = Frame(
+                reliability = reliability,
+                payload = payload,
+                reliableIndex = when (reliability.isReliable) {
+                    true -> outReliableIndex++
+                    false -> 0u
+                },
+                sequenceIndex = sequenceIndex,
+                orderIndex = orderIndex,
+                orderChannel = orderChannel,
+            )
+
+            if (payloads.size > 1) {
+                frame = frame.copy(
+                    splitSize = payloads.size.toUInt(),
+                    splitID = splitID,
+                    splitIndex = i.toUInt()
+                )
             }
 
-            queueFrames(splitFrames, priority)
-        } else {
-            queueFrames(listOf(frame), priority)
+            frame
         }
+
+        queueFrames(frames, priority)
     }
 
     private fun queueFrames(frame: List<Frame>, priority: RakPriority) {
@@ -464,6 +488,9 @@ class RakSession(
                     FrameSet(
                         sequence = outSequenceID++,
                         frames = batch.toList(),
+                        continuousSend = batch.any(Frame::isSplit),
+                        needsBAndAS = true,
+                        isPair = false,
                     )
                 )
                 batch.clear()
@@ -478,6 +505,9 @@ class RakSession(
             FrameSet(
                 sequence = outSequenceID++,
                 frames = batch.toList(),
+                continuousSend = batch.any(Frame::isSplit),
+                needsBAndAS = true,
+                isPair = false,
             )
         )
 

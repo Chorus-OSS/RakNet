@@ -18,7 +18,4 @@ object RakPacketID {
     const val INCOMPATIBLE_PROTOCOL_VERSION: UByte = 0x19u
     const val IP_RECENTLY_CONNECTED: UByte = 0x1au
     const val UNCONNECTED_PONG: UByte = 0x1Cu
-    const val FRAME_SET: UByte = 0x80u
-    const val NACK: UByte = 0xA0u
-    const val ACK: UByte = 0xC0u
 }

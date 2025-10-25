@@ -1,9 +1,10 @@
 package org.chorus_oss.raknet.protocol.packets
 
+import io.ktor.utils.io.core.remaining
+import io.ktor.utils.io.core.size
 import kotlinx.io.*
 import kotlinx.io.bytestring.ByteString
 import org.chorus_oss.raknet.protocol.RakPacketCodec
-import org.chorus_oss.raknet.protocol.types.MTU
 import org.chorus_oss.raknet.types.RakConstants
 import org.chorus_oss.raknet.types.RakPacketID
 
@@ -20,15 +21,16 @@ data class OpenConnectionRequest1(
             stream.writeUByte(id) // Packet ID
             stream.write(value.magic)
             stream.writeUByte(value.protocol)
-            MTU.serialize(value.mtu, stream)
+            stream.write(ByteArray(value.mtu.toInt() - stream.size))
         }
 
         override fun deserialize(stream: Source): OpenConnectionRequest1 {
+            val mtu = stream.remaining.toUShort()
             stream.readUByte() // Packet ID
             return OpenConnectionRequest1(
                 magic = stream.readByteString(RakConstants.MAGIC.size),
                 protocol = stream.readUByte(),
-                mtu = MTU.deserialize(stream),
+                mtu = mtu,
             )
         }
     }
