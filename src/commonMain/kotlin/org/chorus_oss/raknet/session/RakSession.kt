@@ -372,7 +372,7 @@ class RakSession(
 
         frame.reliableIndex = outReliableIndex++
 
-        if (frame.payload.size > maxSize.toLong()) {
+        if (frame.size > maxSize) {
             val splitID = outSplitID++
 
             val splitFrames = mutableListOf<Frame>()
@@ -450,11 +450,15 @@ class RakSession(
     private fun createFrameSets(frames: List<Frame>): List<FrameSet> {
         val sets = mutableListOf<FrameSet>()
 
-        val max = (mtu - RakConstants.DGRAM_MTU_OVERHEAD).toLong()
+        val max = (mtu - RakConstants.DGRAM_HEADER_SIZE).toLong()
 
         val batch = mutableListOf<Frame>()
         var size = RakConstants.DGRAM_HEADER_SIZE.toLong()
         for (frame in frames) {
+            if (frame.size > max) {
+                throw IllegalArgumentException("Frame too large for FrameSet, size: ${frame.size}, max size: $max")
+            }
+
             if (size + frame.size > max) {
                 sets.add(
                     FrameSet(
